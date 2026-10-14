@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Sinden Lab</title>
+<style>
+  :root {
+    --bg: #030c03; --fg: #b8f0a8; --dim: #5a8a4e; --line: #1c3a1c;
+    --warn: #f0c060; --bad: #f08080; --ok: #80f090;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 13px; margin: 0; padding: 16px; line-height: 1.5;
+  }
+  h1 { font-size: 15px; letter-spacing: 3px; margin: 0 0 2px; }
+  h1 + p { color: var(--dim); margin: 0 0 14px; }
+  section {
+    border: 1px solid var(--line); margin: 0 0 14px; padding: 10px 12px;
+  }
+  section > h2 {
+    font-size: 12px; letter-spacing: 2px; margin: 0 0 8px; color: var(--fg);
+  }
+  button {
+    background: transparent; color: var(--fg); border: 1px solid var(--dim);
+    font: inherit; padding: 3px 10px; cursor: pointer; margin: 2px 4px 2px 0;
+  }
+  button:hover { background: var(--line); }
+  button:disabled { color: var(--line); border-color: var(--line); cursor: default; }
+  select, input[type=range] { accent-color: var(--fg); background: var(--bg); color: var(--fg); border: 1px solid var(--line); font: inherit; }
+  label { margin-right: 10px; white-space: nowrap; }
+  .chips span {
+    display: inline-block; border: 1px solid var(--line); padding: 1px 8px; margin: 0 6px 6px 0;
+  }
+  .chips .ok { color: var(--ok); } .chips .bad { color: var(--bad); }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+  .col { min-width: 300px; flex: 1; }
+  video, canvas.view { background: #000; border: 1px solid var(--line); width: 100%; max-width: 480px; display: block; }
+  pre {
+    background: #051005; border: 1px solid var(--line); padding: 6px 8px;
+    max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+    margin: 6px 0; font-size: 12px;
+  }
+  #log { max-height: 260px; }
+  .stat { color: var(--dim); } .stat b { color: var(--fg); font-weight: normal; }
+  .btnstate span {
+    display: inline-block; border: 1px solid var(--line); color: var(--line);
+    padding: 1px 7px; margin: 0 4px 4px 0;
+  }
+  .btnstate span.held { color: var(--bg); background: var(--fg); border-color: var(--fg); }
+  /* fullscreen border test page */
+  #borderPage {
+    display: none; position: fixed; inset: 0; background: #fff; z-index: 50;
+  }
+  #borderInner {
+    position: absolute; background: #000; color: #333;
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+  }
+  #borderAim {
+    position: absolute; width: 36px; height: 36px; margin: -18px 0 0 -18px;
+    border: 3px solid #611; border-radius: 50%; display: none;
+  }
+  #borderAim::after {
+    content: ''; position: absolute; inset: 13px; background: #611; border-radius: 50%;
+  }
+  #borderHud { font: 14px ui-monospace, monospace; color: #444; text-align: center; }
+</style>
+</head>
+<body>
+<h1>SINDEN LAB</h1>
+<p>feasibility console — camera, tracking, and the gun's serial channel. Phase 0 of docs/sinden.md.</p>
+
+<section>
+  <h2>ENVIRONMENT</h2>
+  <div class="chips" id="envChips"></div>
+</section>
+
+<section>
+  <h2>CAMERA</h2>
+  <div>
+    <button id="camList">LIST CAMERAS</button>
+    <select id="camSelect"><option>— list first —</option></select>
+    <button id="camOpen" disabled>OPEN</button>
+    <button id="camClose" disabled>CLOSE</button>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <div class="col">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="stat">live: <b id="camLive">—</b> &nbsp; fps: <b id="camFps">—</b> &nbsp; mean luma: <b id="camLuma">—</b></div>
+    </div>
+    <div class="col">
+      <div class="stat">track.getSettings():</div>
+      <pre id="camSettings">—</pre>
+      <div class="stat">track.getCapabilities() — on macOS, expect NO exposure controls (the key feasibility question):</div>
+      <pre id="camCaps">—</pre>
+      <div id="camControls"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>TRACKING</h2>
+  <div>
+    <label><input type="checkbox" id="trkOn"> run tracker</label>
+    <label>threshold <input type="range" id="trkThresh" min="16" max="240" value="48"> <span id="trkThreshV">48</span></label>
+    <label><input type="checkbox" id="trkFlip" checked> 180° flip</label>
+    <button id="borderBtn">FULLSCREEN BORDER TEST</button>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <div class="col">
+      <canvas id="trkView" class="view" width="320" height="240"></canvas>
+    </div>
+    <div class="col stat">
+      aim: <b id="trkAim">—</b><br>
+      solve rate: <b id="trkRate">—</b> &nbsp; processing: <b id="trkMs">—</b><br>
+      quad: <b id="trkQuad">—</b><br><br>
+      Aim is in fractions of the border's outer quad. If the cursor moves opposite
+      to the gun, toggle the flip. With the gun's camera, start from threshold 48
+      and exposure 78 (sindenrs reference values).
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>GUN SERIAL</h2>
+  <div>
+    <button id="serConnect">CONNECT (Sinden 16c0)</button>
+    <button id="serConnectAny">CONNECT (any port)</button>
+    <button id="serClose" disabled>CLOSE</button>
+    <span class="stat" id="serInfo">—</span>
+  </div>
+  <div style="margin-top:6px">
+    <button id="serAuth" disabled>AUTHENTICATE + STREAM</button>
+    <button id="serQuery" disabled>QUERY INFO</button>
+    <button id="serButtons" disabled>ENABLE BUTTON REPORTS</button>
+    <button id="serOffReload" disabled>OFFSCREEN RELOAD ON</button>
+  </div>
+  <div style="margin-top:6px">
+    <label>recoil strength <input type="range" id="recStrength" min="0" max="100" value="40"> <span id="recStrengthV">40</span>%</label>
+    <button id="recConfig" disabled>CONFIGURE RECOIL</button>
+    <button id="recShot" disabled>TEST SHOT</button>
+    <button id="recAuto" disabled>AUTO ON</button>
+    <button id="recOff" disabled>RECOIL OFF</button>
+  </div>
+  <div style="margin-top:6px">
+    <button id="posCenter" disabled>POSITION: CENTRE</button>
+    <button id="posSweep" disabled>POSITION: 3s SWEEP</button>
+    <label style="margin-left:12px"><input type="checkbox" id="posFromTracker"> drive position from tracker</label>
+    <button id="serUnwedge" disabled>UNWEDGE</button>
+    <button id="serReset" disabled>RESET (1200-baud touch)</button>
+  </div>
+  <div class="btnstate" id="btnState" style="margin-top:8px"></div>
+</section>
+
+<section>
+  <h2>LOG <label style="float:right"><input type="checkbox" id="logRaw"> raw serial bytes</label></h2>
+  <pre id="log"></pre>
+</section>
+
+<div id="borderPage">
+  <div id="borderInner">
+    <div id="borderHud">
+      aim marker follows the tracker · arrows adjust border thickness · Esc exits
+      <div id="borderStat"></div>
+    </div>
+  </div>
+  <div id="borderAim"></div>
+</div>
+
+<script src="gun.js"></script>
+<script src="tracker.js"></script>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+
+// ---------------- log ----------------
+const logEl = $('log');
+function log(msg, cls) {
+  const t = new Date().toTimeString().slice(0, 8);
+  logEl.textContent += `[${t}] ${msg}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+const hex = (u8) => Array.from(u8).map(b => b.toString(16).padStart(2, '0')).join(' ');
+
+// ---------------- environment ----------------
+{
+  const chips = [
+    ['secure context', window.isSecureContext],
+    ['getUserMedia', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)],
+    ['Web Serial', 'serial' in navigator],
+    ['requestVideoFrameCallback', 'requestVideoFrameCallback' in HTMLVideoElement.prototype],
+    ['WebCrypto', !!(crypto && crypto.subtle)],
+  ];
+  $('envChips').innerHTML = chips.map(([n, ok]) =>
+    `<span class="${ok ? 'ok' : 'bad'}">${n}: ${ok ? 'yes' : 'NO'}</span>`).join('');
+  log(`environment: ${chips.map(([n, ok]) => `${n}=${ok ? 'y' : 'N'}`).join(' ')}`);
+  log(`userAgent: ${navigator.userAgent}`);
+}
+
+// ---------------- camera ----------------
+let stream = null, track = null;
+const video = $('video');
+
+$('camList').onclick = async () => {
+  try {
+    // a throwaway stream first, so enumerateDevices gives labels
+    const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
+    tmp.getTracks().forEach(t => t.stop());
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    $('camSelect').innerHTML = devs.map(d =>
+      `<option value="${d.deviceId}">${d.label || d.deviceId.slice(0, 12)}</option>`).join('') ||
+      '<option>— no cameras —</option>';
+    $('camOpen').disabled = !devs.length;
+    log(`cameras: ${devs.map(d => d.label || '(unnamed)').join(' | ') || 'none'}`);
+    const sinden = devs.findIndex(d => /sinden/i.test(d.label));
+    if (sinden >= 0) { $('camSelect').selectedIndex = sinden; log('Sinden camera found and preselected'); }
+  } catch (e) { log(`camera list failed: ${e.name}: ${e.message}`); }
+};
+
+$('camOpen').onclick = async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        deviceId: { exact: $('camSelect').value },
+        width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 },
+      }
+    });
+    track = stream.getVideoTracks()[0];
+    video.srcObject = stream;
+    $('camClose').disabled = false;
+    const s = track.getSettings();
+    $('camLive').textContent = `${s.width}x${s.height}@${s.frameRate ? s.frameRate.toFixed(0) : '?'}`;
+    $('camSettings').textContent = JSON.stringify(s, null, 1);
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    $('camCaps').textContent = JSON.stringify(caps, null, 1);
+    log(`camera open: ${track.label} ${s.width}x${s.height}@${s.frameRate}`);
+    const interesting = ['exposureMode', 'exposureTime', 'brightness', 'contrast', 'gain', 'saturation', 'sharpness', 'colorTemperature', 'whiteBalanceMode', 'focusMode', 'powerLineFrequency'];
+    const found = interesting.filter(k => k in caps);
+    log(found.length ? `tunable controls: ${found.join(', ')}` : 'NO tunable image controls exposed (expected on macOS — see docs/sinden.md)');
+    buildCamControls(caps);
+    startFrameLoop();
+  } catch (e) { log(`camera open failed: ${e.name}: ${e.message}`); }
+};
+
+$('camClose').onclick = () => {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = track = null; video.srcObject = null;
+  $('camClose').disabled = true;
+  $('camLive').textContent = '—';
+  log('camera closed');
+};
+
+function buildCamControls(caps) {
+  const host = $('camControls');
+  host.innerHTML = '';
+  for (const [name, cap] of Object.entries(caps)) {
+    if (Array.isArray(cap) && cap.length && typeof cap[0] === 'string') {
+      const sel = document.createElement('select');
+      sel.innerHTML = cap.map(v => `<option>${v}</option>`).join('');
+      const cur = track.getSettings()[name];
+      if (cur) sel.value = cur;
+      sel.onchange = () => applyCam(name, sel.value);
+      const l = document.createElement('label');
+      l.append(`${name} `, sel);
+      host.append(l);
+    } else if (cap && typeof cap === 'object' && 'min' in cap && 'max' in cap && typeof cap.min === 'number') {
+      const inp = document.createElement('input');
+      inp.type = 'range'; inp.min = cap.min; inp.max = cap.max; inp.step = cap.step || 1;
+      const cur = track.getSettings()[name];
+      if (cur !== undefined) inp.value = cur;
+      const out = document.createElement('span');
+      out.textContent = inp.value;
+      inp.oninput = () => { out.textContent = inp.value; };
+      inp.onchange = () => applyCam(name, Number(inp.value));
+      const l = document.createElement('label');
+      l.style.display = 'block';
+      l.append(`${name} `, inp, ' ', out);
+      host.append(l);
+    }
+  }
+}
+async function applyCam(name, value) {
+  try {
+    await track.applyConstraints({ advanced: [{ [name]: value }] });
+    const now = track.getSettings()[name];
+    log(`applyConstraints ${name}=${value} -> settings read back ${JSON.stringify(now)}`);
+    $('camSettings').textContent = JSON.stringify(track.getSettings(), null, 1);
+  } catch (e) { log(`applyConstraints ${name}=${value} FAILED: ${e.name}: ${e.message}`); }
+}
+
+// ---------------- frame loop: fps, luma, tracking ----------------
+const PROC_W = 320, PROC_H = 240;
+const procCanvas = document.createElement('canvas');
+procCanvas.width = PROC_W; procCanvas.height = PROC_H;
+const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
+const viewCtx = $('trkView').getContext('2d');
+let frames = 0, lastFpsT = performance.now();
+let solveWindow = [];
+let lastAim = null;
+
+function startFrameLoop() {
+  const useRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
+  const step = () => {
+    if (!track) return;
+    frames++;
+    const now = performance.now();
+    if (now - lastFpsT >= 1000) {
+      $('camFps').textContent = (frames * 1000 / (now - lastFpsT)).toFixed(1);
+      frames = 0; lastFpsT = now;
+      if (solveWindow.length) {
+        const ok = solveWindow.filter(Boolean).length;
+        $('trkRate').textContent = `${(ok * 100 / solveWindow.length).toFixed(0)}% of ${solveWindow.length}`;
+        solveWindow = [];
+      }
+    }
+    processFrame();
+    if (useRVFC) video.requestVideoFrameCallback(step);
+    else requestAnimationFrame(step);
+  };
+  if (useRVFC) video.requestVideoFrameCallback(step);
+  else requestAnimationFrame(step);
+}
+
+function processFrame() {
+  if (!video.videoWidth) return;
+  procCtx.drawImage(video, 0, 0, PROC_W, PROC_H);
+  const img = procCtx.getImageData(0, 0, PROC_W, PROC_H);
+  const luma = SindenTracker.lumaFromRGBA(img.data, PROC_W, PROC_H);
+  let mean = 0;
+  for (let i = 0; i < luma.length; i += 16) mean += luma[i];
+  $('camLuma').textContent = (mean / (luma.length / 16)).toFixed(1);
+
+  if (!$('trkOn').checked) return;
+  const threshold = Number($('trkThresh').value);
+  const res = SindenTracker.track(luma, PROC_W, PROC_H, { threshold, flip: $('trkFlip').checked });
+  solveWindow.push(!!res.aim);
+  $('trkMs').textContent = `${res.ms.toFixed(1)} ms`;
+
+  // draw the detector's view
+  const view = viewCtx.createImageData(PROC_W, PROC_H);
+  for (let i = 0; i < luma.length; i++) {
+    const on = luma[i] >= threshold;
+    view.data[i * 4] = on ? 60 : 0;
+    view.data[i * 4 + 1] = on ? 200 : Math.min(60, luma[i] >> 1);
+    view.data[i * 4 + 2] = on ? 60 : 0;
+    view.data[i * 4 + 3] = 255;
+  }
+  viewCtx.putImageData(view, 0, 0);
+  if (res.quad) {
+    viewCtx.strokeStyle = '#f0c060'; viewCtx.lineWidth = 1.5;
+    viewCtx.beginPath();
+    res.quad.forEach(([x, y], i) => i ? viewCtx.lineTo(x, y) : viewCtx.moveTo(x, y));
+    viewCtx.closePath(); viewCtx.stroke();
+    $('trkQuad').textContent = res.quad.map(p => `(${p[0].toFixed(0)},${p[1].toFixed(0)})`).join(' ');
+  } else $('trkQuad').textContent = 'none';
+  // image centre = where the gun points
+  viewCtx.strokeStyle = '#f08080';
+  viewCtx.beginPath();
+  viewCtx.moveTo(PROC_W / 2 - 8, PROC_H / 2); viewCtx.lineTo(PROC_W / 2 + 8, PROC_H / 2);
+  viewCtx.moveTo(PROC_W / 2, PROC_H / 2 - 8); viewCtx.lineTo(PROC_W / 2, PROC_H / 2 + 8);
+  viewCtx.stroke();
+
+  lastAim = res.aim;
+  $('trkAim').textContent = res.aim ? `${(res.aim.x * 100).toFixed(1)}% , ${(res.aim.y * 100).toFixed(1)}%` : '—';
+  updateBorderAim(res.aim);
+  if (res.aim && $('posFromTracker').checked && gun && gun.authenticated) {
+    gun.setPositionPercent(res.aim.x * 100, res.aim.y * 100).catch(() => {});
+  }
+}
+
+$('trkThresh').oninput = () => { $('trkThreshV').textContent = $('trkThresh').value; };
+
+// ---------------- fullscreen border test page ----------------
+let borderPct = 3;
+function layoutBorder() {
+  const inner = $('borderInner');
+  const bw = Math.round(Math.min(innerWidth, innerHeight) * borderPct / 100);
+  inner.style.left = inner.style.top = bw + 'px';
+  inner.style.width = (innerWidth - 2 * bw) + 'px';
+  inner.style.height = (innerHeight - 2 * bw) + 'px';
+  $('borderStat').textContent = `border ${borderPct}% (${bw}px)`;
+}
+$('borderBtn').onclick = async () => {
+  $('borderPage').style.display = 'block';
+  layoutBorder();
+  try { await $('borderPage').requestFullscreen(); } catch (e) { log(`fullscreen refused: ${e.message}`); }
+};
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) $('borderPage').style.display = 'none';
+  else layoutBorder();
+});
+window.addEventListener('resize', () => { if ($('borderPage').style.display === 'block') layoutBorder(); });
+document.addEventListener('keydown', (e) => {
+  if ($('borderPage').style.display !== 'block') return;
+  if (e.key === 'ArrowUp') { borderPct = Math.min(6, borderPct + 0.5); layoutBorder(); }
+  if (e.key === 'ArrowDown') { borderPct = Math.max(0.5, borderPct - 0.5); layoutBorder(); }
+});
+function updateBorderAim(aim) {
+  if ($('borderPage').style.display !== 'block') return;
+  const el = $('borderAim');
+  if (!aim) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.style.left = (aim.x * innerWidth) + 'px';
+  el.style.top = (aim.y * innerHeight) + 'px';
+  $('borderStat').textContent = `border ${borderPct}% · aim ${(aim.x * 100).toFixed(1)},${(aim.y * 100).toFixed(1)}`;
+}
+
+// ---------------- gun serial ----------------
+let gun = null;
+const serButtons = ['serAuth', 'serQuery', 'serButtons', 'serOffReload', 'recConfig', 'recShot', 'recAuto', 'recOff', 'posCenter', 'posSweep', 'serUnwedge', 'serReset', 'serClose'];
+function setSerialUi(open) {
+  serButtons.forEach(id => { $(id).disabled = !open; });
+}
+// the ten controls, for the live state display
+const BTN_ORDER = ['trigger', 'pump', 'frontLeft', 'frontRight', 'rearLeft', 'rearRight', 'dpadUp', 'dpadDown', 'dpadLeft', 'dpadRight'];
+$('btnState').innerHTML = BTN_ORDER.map(n => `<span id="btn_${n}">${n}</span>`).join('');
+
+async function connect(filtered) {
+  if (!('serial' in navigator)) { log('Web Serial not available in this browser'); return; }
+  try {
+    const port = await SindenGun.Gun.requestPort({ filtered });
+    gun = new SindenGun.Gun(port);
+    gun.onRaw = (dir, bytes) => { if ($('logRaw').checked) log(`${dir} ${hex(bytes)}`); };
+    gun.onEvent = onGunEvent;
+    await gun.open();
+    const info = port.getInfo();
+    $('serInfo').textContent = `vid=${(info.usbVendorId || 0).toString(16).padStart(4, '0')} pid=${(info.usbProductId || 0).toString(16).padStart(4, '0')}`;
+    setSerialUi(true);
+    log(`serial open 115200 8N1, ${$('serInfo').textContent}`);
+    log('next: AUTHENTICATE (the gun refuses streaming until the handshake)');
+  } catch (e) { log(`serial connect failed: ${e.name || ''} ${e.message}`); }
+}
+$('serConnect').onclick = () => connect(true);
+$('serConnectAny').onclick = () => connect(false);
+$('serClose').onclick = async () => { if (gun) { await gun.close(); gun = null; } setSerialUi(false); $('serInfo').textContent = '—'; log('serial closed'); };
+
+function onGunEvent(ev) {
+  if (ev.type === 'buttons') {
+    BTN_ORDER.forEach(n => { $(`btn_${n}`).className = ev.held[n] ? 'held' : ''; });
+    const held = BTN_ORDER.filter(n => ev.held[n]);
+    log(`buttons: [${held.join(' ') || 'none'}] (s1=${ev.state1.toString(2).padStart(8, '0')} s2=${ev.state2.toString(2).padStart(8, '0')} extra=${ev.extra.toString(16)})`);
+  } else if (ev.type === 'disconnected') {
+    log(`gun disconnected: ${ev.error}`); setSerialUi(false); gun = null;
+  } else {
+    log(`gun event: ${ev.type}${ev.byte !== undefined ? ' ' + ev.byte : ''}`);
+  }
+}
+
+$('serAuth').onclick = async () => {
+  try {
+    const t0 = performance.now();
+    await gun.authenticate();
+    log(`authenticated in ${(performance.now() - t0).toFixed(0)} ms (gun computes two SHA-256s, ~650 ms is normal)`);
+    await gun.startStreaming();
+    log('streaming started (cmd 121 x2) — position writes now drive the gun\'s HID mouse');
+  } catch (e) { log(`AUTH FAILED: ${e.message} — if writes now time out, try UNWEDGE then RESET`); }
+};
+
+$('serQuery').onclick = async () => {
+  try {
+    log(`firmware: ${await gun.firmwareVersion()}`);
+    log(`camera name: ${await gun.cameraName()}`);
+    log(`unique id: ${await gun.uniqueId()}`);
+    const cal = await gun.calibration();
+    log(`EEPROM calibration: x=${cal.x.toFixed(2)}% y=${cal.y.toFixed(2)}%`);
+  } catch (e) { log(`query failed: ${e.message}`); }
+};
+
+$('serButtons').onclick = async () => {
+  try {
+    await gun.enableButtonReports();
+    log('button reports ON (cmd 50): pull the trigger — queries are disabled from here');
+    $('serQuery').disabled = true; $('serAuth').disabled = true;
+  } catch (e) { log(`enable buttons failed: ${e.message}`); }
+};
+
+$('serOffReload').onclick = async () => {
+  const on = $('serOffReload').textContent.includes('ON');
+  await gun.setOffscreenReload(on);
+  $('serOffReload').textContent = on ? 'OFFSCREEN RELOAD OFF' : 'OFFSCREEN RELOAD ON';
+  log(`offscreen reload ${on ? 'enabled' : 'disabled'}`);
+};
+
+$('recStrength').oninput = () => { $('recStrengthV').textContent = $('recStrength').value; };
+$('recConfig').onclick = async () => {
+  try {
+    await gun.configureRecoil({ enabled: true, strength: Number($('recStrength').value) });
+    log(`recoil configured, strength ${$('recStrength').value}% (saturates ~40%)`);
+  } catch (e) { log(`recoil config failed: ${e.message}`); }
+};
+$('recShot').onclick = () => { gun.fireRecoil(); log('recoil test shot (cmd 168)'); };
+$('recAuto').onclick = () => { gun.startAutoRecoil(); log('auto recoil started (cmd 169) — RECOIL OFF stops it'); };
+$('recOff').onclick = () => { gun.stopRecoil(); log('recoil disabled'); };
+
+$('posCenter').onclick = () => { gun.setPositionPercent(50, 50); log('position 50,50 sent — the OS cursor should jump to screen centre'); };
+$('posSweep').onclick = async () => {
+  log('sweeping a circle for 3 s — watch the OS cursor');
+  const t0 = performance.now();
+  const timer = setInterval(() => {
+    const t = (performance.now() - t0) / 1000;
+    if (t > 3) { clearInterval(timer); log('sweep done'); return; }
+    const a = t * 2 * Math.PI;
+    gun.setPositionPercent(50 + 35 * Math.cos(a), 50 + 35 * Math.sin(a)).catch(() => {});
+  }, 16);
+};
+
+$('serUnwedge').onclick = async () => { await gun.unwedge(); log('unwedge sent (32 zero bytes)'); };
+$('serReset').onclick = async () => {
+  const port = gun.port;
+  await gun.close(); gun = null; setSerialUi(false);
+  try {
+    await SindenGun.bootloaderTouch(port);
+    log('1200-baud reset touch sent: the gun re-enumerates in ~4 s (briefly as the Caterina bootloader). Reconnect after.');
+  } catch (e) { log(`reset failed: ${e.message}`); }
+};
+
+if ('serial' in navigator) {
+  navigator.serial.addEventListener('disconnect', (e) => {
+    if (gun && e.target === gun.port) { log('gun serial port disconnected'); gun = null; setSerialUi(false); }
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Time Crisis II (browser port)</title>
+<meta name="robots" content="noai, noimageai">
+<style>
+  html{background:#111;color:#eee}
+  body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:inherit;color:inherit}
+</style>
+<style>
+  /* The page must be served statically (the engine tolerates no CSP). */
+  .arcade-wrap {
+    --panel: #041004;
+    --deep: #030c03;
+    --edge: #1c3a1c;
+    --edge-lit: #2c552c;
+    --ctext: #b8f0a8;
+    --dim: #4f8f4f;
+    --bright: #eaffe0;
+    --ok: #5fdf5f;
+    --bad: #e2a23d;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    max-width: 770px;
+    margin: 0 auto;
+    padding: 24px 0 40px;
+  }
+  /* ── The machine: one contained codec screen (title, loader, game) ── */
+  .machine {
+    background: var(--panel); border: 2px solid var(--edge); border-radius: 4px;
+    padding: 18px 16px; text-align: center;
+    font-family: var(--mono); color: var(--ctext); font-size: 15px; line-height: 1.55;
+  }
+  .machine h1 { margin: 2px 0 10px; }
+  .machine h1 span { /* until the clear-logo art lands: a typographic title */
+    display: block; line-height: 1.1;
+    font-size: clamp(20px, 4.5vw, 30px); font-weight: 700; letter-spacing: .08em;
+    color: var(--bright); text-shadow: 0 0 18px rgba(95, 223, 95, .35);
+  }
+  #loadline {
+    display: none;
+    max-width: 640px; margin: 10px auto;
+    border: 1px solid var(--edge); border-radius: 4px; background: var(--deep);
+    padding: 12px 16px;
+    font-size: 12px; letter-spacing: .15em; color: var(--ctext); text-align: left;
+  }
+  #loadline .cursor {
+    display: inline-block; width: 0.55em; height: 1em; margin-left: 4px;
+    background: #8fcf8f; vertical-align: text-bottom;
+    animation: load-blink 1s infinite steps(1);
+  }
+  @keyframes load-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #loadline .cursor { animation: none; } }
+  .machine .panel {
+    background: var(--deep); border: 1px solid var(--edge); border-radius: 4px;
+    padding: 16px 18px; margin: 10px auto; max-width: 640px; text-align: left;
+  }
+  .machine .panel h2 {
+    margin: 0 0 8px; font-size: 0.75rem; letter-spacing: 0.25em;
+    text-transform: uppercase; color: var(--dim); font-weight: 600;
+    border-bottom: 1px solid var(--edge); padding-bottom: 8px;
+  }
+  .machine .panel p { color: var(--ctext); margin: 6px 0; font-size: 13px; }
+  .machine .panel p b { color: var(--bright); }
+  .machine button, .machine .btn, .machine label.filebtn {
+    display: inline-block; background: #14381c; color: var(--ctext);
+    border: 1px solid var(--edge-lit);
+    padding: 9px 20px; border-radius: 4px; font: 600 13px var(--mono);
+    letter-spacing: .05em; cursor: pointer; margin: 8px 8px 0 0;
+    text-decoration: none;
+    transition: background .3s ease, color .3s ease;
+  }
+  .machine button:hover, .machine .btn:hover, .machine label.filebtn:hover { background: #1c4a26; color: var(--bright); }
+  .machine button.secondary, .machine .btn.secondary, .machine label.filebtn.secondary { background: var(--deep); border-color: var(--edge); color: var(--dim); }
+  .machine button.secondary:hover, .machine .btn.secondary:hover { color: var(--ctext); }
+  .machine button:disabled { background: var(--deep); border-color: var(--edge); color: #3d6b3d; cursor: default; }
+  input[type=file] { display: none; }
+  #gamebox { display: none; }
+  #canvas { background: #000; width: 100%; aspect-ratio: 4 / 3;
+            border: 1px solid var(--edge); border-radius: 4px; display: block;
+            margin: 0 auto; image-rendering: auto; box-sizing: border-box; }
+  #canvas:fullscreen { border-radius: 0; border: 0; }
+  .bar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+  .bar button, .bar .btn { margin: 0; }
+  #status { color: var(--dim); font-size: 13px; margin-top: 8px; min-height: 18px; }
+
+  /* ── Controls: their own contained section below the machine ── */
+  .controls-panel {
+    background: var(--panel); border: 2px solid var(--edge); border-radius: 4px;
+    padding: 16px 18px; margin: 16px 0 0;
+    font-family: var(--mono);
+  }
+  .controls-panel h2 {
+    margin: 0 0 10px; font-size: 0.75rem; letter-spacing: 0.25em;
+    text-transform: uppercase; color: var(--dim); font-weight: 600;
+    border-bottom: 1px solid var(--edge); padding-bottom: 8px;
+  }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px 24px; margin: 0; }
+  .controls div {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    font-size: 12.5px; padding: 5px 0; border-bottom: 1px dotted rgba(79, 143, 79, 0.35);
+  }
+  .controls dt { color: var(--bright); font-weight: 600; }
+  .controls dd { margin: 0; color: var(--dim); text-align: right; }
+
+  .smallprint { margin: 14px 2px 0; font-size: 11px; color: #888; text-align: center; }
+</style>
+</head>
+<body oncontextmenu="event.preventDefault()"><!-- page-wide: a lightgun's pedal is right click, and the gun can drift off the canvas mid-press -->
+  <main id="main-content">
+    <div class="arcade-wrap">
+      <div class="machine">
+        <h1><span>TIME CRISIS II</span></h1>
+        <div id="loadline">ESTABLISHING LINK &mdash; DOWNLOADING GAME DATA<span class="cursor" aria-hidden="true"></span></div>
+        <!-- fallback only: shown when nothing is stored AND the hosted download fails -->
+        <section class="panel" id="rompanel" style="display:none">
+          <h2>Game files</h2>
+          <p>The hosted download didn&rsquo;t come through. Feed the machine your own copy of the MAME
+             ROM set <b>timecrs2.zip</b> (Time Crisis II, US TSS3 Ver.B) &mdash; it is verified by the game
+             itself and kept in your browser only, nothing is uploaded.</p>
+          <label class="filebtn">Choose timecrs2.zip<input type="file" id="romfile" accept=".zip"></label>
+          <button class="secondary" id="forget" style="display:none">Forget stored ROMs</button>
+          <div id="romnote" style="display:none; font-size:12px; margin-top:8px"></div>
+        </section>
+
+        <section id="gamebox">
+          <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+          <div class="bar">
+            <button id="start">Insert coin &amp; start</button>
+            <button class="secondary" id="fullscreen">Fullscreen</button>
+            <a class="btn secondary" href="../calibrate/">Calibrate light gun</a>
+          </div>
+          <div id="status"></div>
+        </section>
+      </div>
+
+      <section class="controls-panel">
+        <h2>Controls</h2>
+        <dl class="controls">
+          <div><dt>Aim</dt><dd>mouse / light gun</dd></div>
+          <div><dt>Shoot</dt><dd>left click / trigger</dd></div>
+          <div><dt>Pedal (cover)</dt><dd>right click / Z</dd></div>
+          <div><dt>Coin</dt><dd>5</dd></div>
+          <div><dt>White border (Sinden)</dt><dd>F8</dd></div>
+          <div><dt>Menu</dt><dd>Esc</dd></div>
+        </dl>
+      </section>
+
+      <p class="smallprint">Game code &amp; assets &copy; Bandai Namco. Recompilation &copy; its contributors (MIT).</p>
+    </div>
+  </main>
+<script>
+/* The engine reads the backbuffer after presenting (the pause/menu backdrop,
+ * screenshots); without this the browser hands back a cleared buffer. */
+{
+  const orig = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+    if (typeof type === 'string' && type.includes('webgl')) attrs = Object.assign({}, attrs, { preserveDrawingBuffer: true });
+    return orig.call(this, type, attrs);
+  };
+}
+</script>
+<script src="../sinden/aim.js"></script>
+<script>
+'use strict';
+(async () => {
+  const $ = id => document.getElementById(id);
+  /* light gun: the calibration suite's correction + smoothing, cursor hidden in fullscreen */
+  const gunProfile = SindenAim.load();
+  SindenAim.install($('canvas'), gunProfile);
+  const GAME = 'timecrs2';
+  const ZIP_KEY = 'timecrs2.zip';
+  /* files the game saves in its working directory, persisted across visits */
+  const SAVE_FILES = ['tc2_backup.nv', 'tc2.cfg'];
+
+  /* ---- IndexedDB (the same arcade-roms store the Time Crisis page uses, under this game's prefix) ---- */
+  const ROM_DB = 'arcade-roms', ROM_STORE = 'files';
+  const openDb = () => new Promise((res, rej) => {
+    const req = indexedDB.open(ROM_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(ROM_STORE);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+  async function dbPut(files) {              /* Map name -> Uint8Array */
+    const db = await openDb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(ROM_STORE, 'readwrite'), st = tx.objectStore(ROM_STORE);
+      for (const [name, data] of files) st.put(data, `${GAME}/${name}`);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    });
+    db.close();
+  }
+  async function dbGet(name) {
+    const db = await openDb();
+    const out = await new Promise((res, rej) => {
+      const tx = db.transaction(ROM_STORE, 'readonly');
+      const rq = tx.objectStore(ROM_STORE).get(`${GAME}/${name}`);
+      rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+    });
+    db.close();
+    return out;
+  }
+  async function dbClearGame() {
+    const db = await openDb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(ROM_STORE, 'readwrite'), st = tx.objectStore(ROM_STORE);
+      const cur = st.openCursor();
+      cur.onsuccess = () => {
+        const c = cur.result;
+        if (!c) return res();
+        if (typeof c.key === 'string' && c.key.startsWith(`${GAME}/`)) st.delete(c.key);
+        c.continue();
+      };
+      cur.onerror = () => rej(cur.error);
+    });
+    db.close();
+  }
+
+  async function ready() {
+    $('loadline').style.display = 'none';
+    $('rompanel').style.display = 'none';
+    $('gamebox').style.display = 'block';
+  }
+  function needManual(msg) {
+    $('loadline').style.display = 'none';
+    $('rompanel').style.display = 'block';
+    if (msg) { $('romnote').style.display = 'block'; $('romnote').textContent = msg; }
+  }
+
+  $('romfile').addEventListener('change', async ev => {
+    const f = ev.target.files[0];
+    if (!f) return;
+    const data = new Uint8Array(await f.arrayBuffer());
+    await dbPut(new Map([[ZIP_KEY, data]]));
+    await ready();
+  });
+  $('forget').addEventListener('click', async () => { await dbClearGame(); location.reload(); });
+
+  if (await dbGet(ZIP_KEY)) {
+    $('forget').style.display = 'inline-block';
+    await ready();
+  } else {
+    /* the zip hosted next to the page: fetched silently on first visit; the
+     * manual picker only appears if this path fails. The game itself verifies
+     * every chip by name, size and CRC when it unpacks the zip. */
+    try {
+      $('loadline').style.display = 'block';
+      const r = await fetch('timecrs2.zip');
+      if (!r.ok) throw new Error('download ' + r.status);
+      const data = new Uint8Array(await r.arrayBuffer());
+      await dbPut(new Map([[ZIP_KEY, data]]));
+      await ready();
+    } catch (e) { needManual(); }
+  }
+
+  /* ---- boot ---- */
+  if (typeof WebAssembly.Suspending === 'undefined')
+    $('status').textContent = 'This browser has no JSPI — use Chrome or Edge 137+.';
+  let booted = false;
+  $('start').addEventListener('click', async () => {
+    if (booted) return;
+    booted = true;
+    $('start').disabled = true;
+    $('status').textContent = 'Loading…';
+    try {
+      const zip = await dbGet(ZIP_KEY);
+      if (!zip) throw new Error('no stored ROM zip');
+      const ver = (await fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : '0').catch(() => '0')).trim();
+      await new Promise((res, rej) => {
+        const sc = document.createElement('script');
+        sc.src = 'tc2.js?v=' + ver;
+        sc.onload = res; sc.onerror = () => rej(new Error('tc2.js failed to load'));
+        document.head.appendChild(sc);
+      });
+      const cfg = {
+        locateFile: f => f + '?v=' + ver,
+        canvas: $('canvas'),
+        print: t => console.log('[tc2]', t),
+        printErr: t => console.warn('[tc2]', t),
+        setStatus: t => { if (t) $('status').textContent = t; },
+        preRun: [() => {                 /* ?env=KEY:VAL,KEY2:VAL2 -> engine env vars */
+          const env = new URLSearchParams(location.search).get('env');
+          if (env) for (const kv of env.split(',')) { const [k, v] = kv.split(':'); cfg.ENV[k] = v || '1'; }
+        }],
+      };
+      const module = await createTimeCrisis2(cfg);
+      const FS = module.FS;
+      FS.mkdir('/game');
+      FS.mkdir('/game/roms');
+      FS.writeFile('/game/roms/timecrs2.zip', zip);   /* src/tc2_rom.c verifies and unpacks it at start-up */
+      for (const name of SAVE_FILES) {
+        const d = await dbGet('save/' + name);
+        if (d) FS.writeFile('/game/' + name, d);
+      }
+      /* first visit: the cabinet's factory backup RAM wants 4 coins a credit — ship one
+       * preconfigured to 1 COIN 1 CREDIT instead (set through the game's own test menu) */
+      if (!(await dbGet('save/tc2_backup.nv'))) {
+        try {
+          const r = await fetch('tc2_default.nv?v=' + ver);
+          if (r.ok) FS.writeFile('/game/tc2_backup.nv', new Uint8Array(await r.arrayBuffer()));
+        } catch (_) {}                                 /* blank RAM still works: it just asks for 4 coins */
+      }
+      FS.chdir('/game');
+      /* the calibration suite's border size + crosshair choice (engine reads them at start) */
+      const gunCfg = SindenAim.engineValues(gunProfile);
+      if (Object.keys(gunCfg).length)
+        for (const name of ['tc2.cfg']) {
+          let text = '';
+          try { text = FS.readFile('/game/' + name, { encoding: 'utf8' }); } catch (_) {}
+          FS.writeFile('/game/' + name, SindenAim.patchCfg(text, gunCfg));
+        }
+
+      /* persist the cabinet's backup RAM + settings every few seconds and on leave */
+      const persist = async () => {
+        const out = new Map();
+        for (const name of SAVE_FILES) {
+          try { out.set('save/' + name, FS.readFile('/game/' + name)); } catch (_) {}
+        }
+        if (out.size) await dbPut(out);
+      };
+      setInterval(persist, 5000);
+      addEventListener('pagehide', persist);
+
+      $('status').textContent = '';
+      $('canvas').focus();
+      window.__tc2 = module;                 /* debug access to the module + FS */
+      const extra = new URLSearchParams(location.search).get('args');
+      module.callMain(extra ? extra.split(',') : ['--window', '1']);
+    } catch (e) {
+      $('status').textContent = 'Boot failed: ' + (e && e.message ? e.message : String(e)) + ' (see console)';
+      console.error('boot error:', e, e && e.errno, e && e.stack);
+      $('start').disabled = false;
+      booted = false;
+    }
+  });
+
+  $('fullscreen').addEventListener('click', () => $('canvas').requestFullscreen());
+})();
+</script>
+</body>
+</html>

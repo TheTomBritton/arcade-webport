@@ -1,0 +1,17 @@
+# ROMs and anything derived from them are never committed.
+*.zip
+*.7z
+*.nv
+
+# Built engines (build from the engine repos; see README)
+tc.js
+tc.wasm
+tc2.js
+tc2.wasm
+*.wasm.br
+*.wasm.gz
+version.txt
+
+node_modules/
+test/out/
+.DS_Store

@@ -1,0 +1,251 @@
+{
+ "game": "timecris",
+ "title": "Time Crisis (World, TS2 Ver.B)",
+ "mainBin": {
+  "name": "timecris_main.bin",
+  "size": 4194304,
+  "interleave": [
+   {
+    "name": "ts2verb.1",
+    "byte": 3
+   },
+   {
+    "name": "ts2verb.2",
+    "byte": 2
+   },
+   {
+    "name": "ts2verb.3",
+    "byte": 1
+   },
+   {
+    "name": "ts2verb.4",
+    "byte": 0
+   }
+  ]
+ },
+ "chips": [
+  {
+   "region": "maincpu",
+   "name": "ts2verb.1",
+   "offset": 3,
+   "size": 1048576,
+   "crc32": "29b377f7"
+  },
+  {
+   "region": "maincpu",
+   "name": "ts2verb.2",
+   "offset": 2,
+   "size": 1048576,
+   "crc32": "79512e25"
+  },
+  {
+   "region": "maincpu",
+   "name": "ts2verb.3",
+   "offset": 1,
+   "size": 1048576,
+   "crc32": "9f4ced33"
+  },
+  {
+   "region": "maincpu",
+   "name": "ts2verb.4",
+   "offset": 0,
+   "size": 1048576,
+   "crc32": "3e0cfb38"
+  },
+  {
+   "region": "mcu",
+   "name": "ts1data.8k",
+   "offset": 0,
+   "size": 524288,
+   "crc32": "e68aa973"
+  },
+  {
+   "region": "sprite",
+   "name": "ts1scg0.12f",
+   "offset": 0,
+   "size": 2097152,
+   "crc32": "14a3674d"
+  },
+  {
+   "region": "sprite",
+   "name": "ts1scg1.10f",
+   "offset": 2097152,
+   "size": 2097152,
+   "crc32": "11791dbf"
+  },
+  {
+   "region": "sprite",
+   "name": "ts1scg2.8f",
+   "offset": 4194304,
+   "size": 2097152,
+   "crc32": "d630fff9"
+  },
+  {
+   "region": "sprite",
+   "name": "ts1scg3.7f",
+   "offset": 6291456,
+   "size": 2097152,
+   "crc32": "1a62f015"
+  },
+  {
+   "region": "sprite",
+   "name": "ts1scg4.5f",
+   "offset": 8388608,
+   "size": 2097152,
+   "crc32": "511b8dd6"
+  },
+  {
+   "region": "sprite",
+   "name": "ts1scg5.3f",
+   "offset": 10485760,
+   "size": 2097152,
+   "crc32": "553bb246"
+  },
+  {
+   "region": "textile",
+   "name": "ts1cg0.8d",
+   "offset": 0,
+   "size": 2097152,
+   "crc32": "de07b22c"
+  },
+  {
+   "region": "textile",
+   "name": "ts1cg1.10d",
+   "offset": 2097152,
+   "size": 2097152,
+   "crc32": "992d26f6"
+  },
+  {
+   "region": "textile",
+   "name": "ts1cg2.12d",
+   "offset": 4194304,
+   "size": 2097152,
+   "crc32": "6273954f"
+  },
+  {
+   "region": "textile",
+   "name": "ts1cg3.13d",
+   "offset": 6291456,
+   "size": 2097152,
+   "crc32": "38171f24"
+  },
+  {
+   "region": "textile",
+   "name": "ts1cg4.14d",
+   "offset": 8388608,
+   "size": 2097152,
+   "crc32": "51f09856"
+  },
+  {
+   "region": "textile",
+   "name": "ts1cg5.16d",
+   "offset": 10485760,
+   "size": 2097152,
+   "crc32": "4cd9fd79"
+  },
+  {
+   "region": "textile",
+   "name": "ts1cg6.18d",
+   "offset": 12582912,
+   "size": 2097152,
+   "crc32": "f17f2ec9"
+  },
+  {
+   "region": "textilemap",
+   "name": "ts1ccrl.3d",
+   "offset": 0,
+   "size": 2097152,
+   "crc32": "56cad2df"
+  },
+  {
+   "region": "textilemap",
+   "name": "ts1ccrh.1d",
+   "offset": 2097152,
+   "size": 524288,
+   "crc32": "a1cc3741"
+  },
+  {
+   "region": "pointrom",
+   "name": "ts1ptrl0.18k",
+   "offset": 0,
+   "size": 524288,
+   "crc32": "e5f2d275"
+  },
+  {
+   "region": "pointrom",
+   "name": "ts1ptrl1.16k",
+   "offset": 524288,
+   "size": 524288,
+   "crc32": "2bba3800"
+  },
+  {
+   "region": "pointrom",
+   "name": "ts1ptrl2.15k",
+   "offset": 1048576,
+   "size": 524288,
+   "crc32": "d4441c08"
+  },
+  {
+   "region": "pointrom",
+   "name": "ts1ptrm0.18j",
+   "offset": 1572864,
+   "size": 524288,
+   "crc32": "8aea02ba"
+  },
+  {
+   "region": "pointrom",
+   "name": "ts1ptrm1.16j",
+   "offset": 2097152,
+   "size": 524288,
+   "crc32": "bccf19bc"
+  },
+  {
+   "region": "pointrom",
+   "name": "ts1ptrm2.15j",
+   "offset": 2621440,
+   "size": 524288,
+   "crc32": "7280be31"
+  },
+  {
+   "region": "pointrom",
+   "name": "ts1ptru0.18f",
+   "offset": 3145728,
+   "size": 524288,
+   "crc32": "c30d6332"
+  },
+  {
+   "region": "pointrom",
+   "name": "ts1ptru1.16f",
+   "offset": 3670016,
+   "size": 524288,
+   "crc32": "993cde84"
+  },
+  {
+   "region": "pointrom",
+   "name": "ts1ptru2.15f",
+   "offset": 4194304,
+   "size": 524288,
+   "crc32": "7cb25c73"
+  },
+  {
+   "region": "c352",
+   "name": "ts1wavea.2l",
+   "offset": 0,
+   "size": 4194304,
+   "crc32": "d1123301"
+  },
+  {
+   "region": "c352",
+   "name": "ts1waveb.1l",
+   "offset": 8388608,
+   "size": 2097152,
+   "crc32": "bf4d7272"
+  }
+ ],
+ "extra": [
+  {
+   "name": "c71.bin",
+   "size": 8192
+  }
+ ]
+}

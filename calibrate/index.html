@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gun Calibration</title>
+<style>
+  /* Codec visual language shared with the game pages (timecrisis/index.html). */
+  :root {
+    --bg: #020802;
+    --panel: #041004;
+    --deep: #030c03;
+    --edge: #1c3a1c;
+    --edge-lit: #2c552c;
+    --text: #b8f0a8;
+    --dim: #4f8f4f;
+    --bright: #eaffe0;
+    --ok: #5fdf5f;
+    --bad: #e2a23d;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 var(--mono);
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+  }
+  header { padding: 20px 16px 4px; text-align: center; }
+  header .back { font-size: 12px; margin-bottom: 10px; }
+  header .back a {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; background: #14381c; color: var(--text);
+    border: 1px solid var(--edge); border-radius: 4px; text-decoration: none;
+  }
+  header .back a:hover { background: #1c4a26; color: var(--bright); }
+  header h1 { margin: 0; font-size: 1rem; letter-spacing: .3em; text-transform: uppercase; color: var(--bright); }
+  main { width: 100%; max-width: 1000px; padding: 16px; box-sizing: border-box; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--edge); border-radius: 4px;
+    padding: 18px 20px; margin: 0 auto 16px; max-width: 640px;
+  }
+  .panel h2 {
+    margin: 0 0 8px; font-size: 0.75rem; letter-spacing: 0.25em;
+    text-transform: uppercase; color: var(--dim); font-weight: 600;
+    border-bottom: 1px solid var(--edge); padding-bottom: 8px;
+  }
+  .panel p, .panel li { color: var(--text); margin: 6px 0; font-size: 13px; }
+  .panel b { color: var(--bright); }
+  .panel ol { padding-left: 20px; margin: 6px 0; }
+  button {
+    display: inline-block; background: #14381c; color: var(--text);
+    border: 1px solid var(--edge-lit);
+    padding: 9px 20px; border-radius: 4px; font: 600 13px var(--mono);
+    letter-spacing: .05em; cursor: pointer; margin: 8px 8px 0 0;
+  }
+  button:hover { background: #1c4a26; color: var(--bright); }
+  button.secondary { background: var(--deep); border-color: var(--edge); color: var(--dim); }
+  button.secondary:hover { color: var(--text); }
+  #profile { font: 12px/1.7 var(--mono); background: var(--deep); border: 1px solid var(--edge);
+             border-radius: 4px; padding: 10px 14px; margin-top: 10px; white-space: pre-wrap; }
+  .on { color: var(--ok); } .off { color: var(--bad); }
+  footer { color: #3d6b3d; font-size: 11px; padding: 12px; text-align: center; max-width: 640px; }
+
+  /* ---- the fullscreen stage ---- */
+  #stage { position: fixed; inset: 0; background: #000; display: none; cursor: none; z-index: 10; }
+  #stage.shown { display: block; }
+  #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #hud {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(560px, 62vw); text-align: center; pointer-events: auto;
+  }
+  #hud.low { top: auto; bottom: 14%; transform: translateX(-50%); }
+  #hud.passive { pointer-events: none; }
+  #hud h2 { margin: 0 0 6px; font-size: clamp(14px, 1.6vw, 22px); letter-spacing: .3em;
+            text-transform: uppercase; color: var(--bright); }
+  #hud p { margin: 4px 0; font-size: clamp(12px, 1.25vw, 17px); color: var(--text); }
+  #hud .big { font-size: clamp(18px, 2.4vw, 34px); color: var(--bright); font-weight: 700; }
+  #hud .row { display: flex; gap: 14px; justify-content: center; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+  /* gun-sized buttons: the raw, uncalibrated aim has to hit them */
+  #hud button { font-size: clamp(14px, 1.5vw, 20px); padding: .9em 1.6em; margin: 0; min-width: 7em; cursor: none; }
+  #hud .val { min-width: 4em; display: inline-block; font-size: clamp(18px, 2vw, 28px); color: var(--bright); }
+  #hud .warn { color: var(--bad); }
+  #hud .good { color: var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  
+  <h1>Light gun calibration</h1>
+</header>
+<main>
+  <section class="panel">
+    <h2>What this does</h2>
+    <p>Tunes a Sinden (or any absolute-mouse light gun) for the arcade's games. Everything is
+       done with the gun: every button on the calibration screen can be shot.</p>
+    <ol>
+      <li><b>Border</b> &mdash; the white border the gun tracks, and whether the game draws its crosshair.</li>
+      <li><b>Steadiness</b> &mdash; measures how much the aim shakes, and tunes the smoothing that steadies it.</li>
+      <li><b>Calibrate</b> &mdash; shoot 9 targets; the games correct the aim to match.</li>
+      <li><b>Check</b> &mdash; shoot a few random targets with the correction on, and save.</li>
+    </ol>
+    <p>Stand where you play. Your gun's driver must be running and treating the gun as a mouse.
+       Settings are kept in this browser and apply to every game in the arcade, in fullscreen.</p>
+    <button id="go">Start calibration</button>
+    <button class="secondary" id="toggle"></button>
+    <button class="secondary" id="reset">Reset to defaults</button>
+    <div id="profile"></div>
+  </section>
+</main>
+<footer>Esc leaves the calibration screen at any point; nothing is saved until the last step.</footer>
+
+<div id="stage"><canvas id="cv"></canvas><div id="hud"></div></div>
+
+<script src="../sinden/aim.js"></script>
+<script>
+'use strict';
+(() => {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), cv = $('cv'), hud = $('hud');
+  const ctx = cv.getContext('2d');
+
+  const GRID = [0.12, 0.5, 0.88];
+  const TARGETS = GRID.flatMap(y => GRID.map(x => [x, y]));
+  const PRE_MS = [150, 20];       // a shot's aim: the samples this long before the press
+  const COOLDOWN_MS = 450;        // a second press this soon after a shot is a bounce
+  const STEADY = 0.04;            // samples spread wider than this (fraction of screen) = moving
+
+  let saved = SindenAim.load();
+  let draft = null;               // the profile being built; saved only at the end
+  let step = null;
+  let raw = null;                 // latest raw aim, fraction of the viewport
+  let hist = [];                  // [t, x, y] of recent raw positions
+  let preview = null;             // Pipeline for the smoothed ring
+  let smooth = null;              // latest smoothed position
+  let jitter = { raw: [], smooth: [] };
+  let cal = null;                 // { i, shots: [raw|null x9], redo: [indices], lastShot }
+  let check = null;               // { targets, i, errors: [], hits: [] }
+
+  // ---------------------------------------------------------------- intro page
+
+  function describe(p) {
+    const lines = [
+      `in the games:  ${p.enabled ? 'ON' : 'OFF'}`,
+      `border:        ${p.borderPct} %    crosshair: ${p.crosshair ? 'on' : 'off'}`,
+      `smoothing:     ${p.smoothing} / 10`,
+    ];
+    if (p.stats) lines.push(`last result:   ${pct(p.stats.before)} error before, ${pct(p.stats.after)} after (mean)`);
+    if (p.calibratedAt) lines.push(`calibrated:    ${new Date(p.calibratedAt).toLocaleString()}`);
+    return lines.join('\n');
+  }
+  function renderIntro() {
+    $('profile').innerHTML = describe(saved).replace(/ON|OFF/, m => `<span class="${m === 'ON' ? 'on' : 'off'}">${m}</span>`);
+    $('toggle').textContent = saved.enabled ? 'Turn off in the games' : 'Turn on in the games';
+    $('toggle').disabled = !saved.calibratedAt && !saved.enabled;
+  }
+  $('toggle').addEventListener('click', () => { saved.enabled = !saved.enabled; SindenAim.save(saved); renderIntro(); });
+  $('reset').addEventListener('click', () => { saved = SindenAim.defaults(); SindenAim.save(saved); renderIntro(); });
+  $('go').addEventListener('click', async () => {
+    draft = Object.assign(SindenAim.defaults(), saved, { affine: SindenAim.IDENTITY.slice() });
+    stage.classList.add('shown');
+    try { await document.documentElement.requestFullscreen(); } catch (_) {}
+    resize();
+    goto('border');
+  });
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && stage.classList.contains('shown')) leave();
+  });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && stage.classList.contains('shown')) leave(); });
+  function leave() {
+    stage.classList.remove('shown');
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    step = null;
+    renderIntro();
+  }
+
+  // ---------------------------------------------------------------- input
+
+  // The stage is laid out like a fullscreen game: the 4:3 box centred on the screen, the
+  // border round it. The driver maps the border to the whole screen, so the gun's raw
+  // position (a fraction of the viewport) is that fraction of the box, and the OS pointer
+  // is NOT where the gun points (except dead centre) — so a shot presses whatever button
+  // is drawn where the gun points, and the pointer's own clicks are ignored.
+  const area = () => SindenAim.box(innerWidth, innerHeight);
+  const toScreen = p => { const a = area(); return [a.x + p[0] * a.w, a.y + p[1] * a.h]; };
+  stage.addEventListener('click', e => { if (e.isTrusted) { e.preventDefault(); e.stopPropagation(); } }, true);
+  stage.addEventListener('contextmenu', e => e.preventDefault());
+  stage.addEventListener('mousemove', e => {
+    raw = [e.clientX / innerWidth, e.clientY / innerHeight];
+    hist.push([e.timeStamp, raw[0], raw[1]]);
+    while (hist.length && hist[0][0] < e.timeStamp - 1500) hist.shift();
+    if (preview) {
+      smooth = preview.push(raw[0], raw[1], e.timeStamp, step === 'check');
+      jitter.raw.push([e.timeStamp, raw[0], raw[1]]);
+      jitter.smooth.push([e.timeStamp, smooth[0], smooth[1]]);
+      for (const k of ['raw', 'smooth']) while (jitter[k].length && jitter[k][0][0] < e.timeStamp - 1000) jitter[k].shift();
+    }
+  });
+  stage.addEventListener('mousedown', e => {
+    if (e.button === 0 && raw) {
+      const [sx, sy] = toScreen([e.clientX / innerWidth, e.clientY / innerHeight]);
+      const hit = document.elementFromPoint(sx, sy);
+      const btn = hit && hit.closest('#hud button');
+      if (btn) { if (!btn.disabled) btn.click(); return; }
+    }
+    if (e.button === 2) { if (step === 'calibrate') undo(); return; }
+    if (e.button === 0 && (step === 'calibrate' || step === 'check')) shoot(e.timeStamp);
+  });
+
+  // the aim for a shot: median of the samples just before the press (the pull
+  // itself jerks the gun), or the last position when the gun sat dead still
+  function aimAt(t) {
+    const win = hist.filter(([ts]) => ts >= t - PRE_MS[0] && ts <= t - PRE_MS[1]);
+    if (win.length < 3) return raw ? { pos: raw.slice(), spread: 0 } : null;
+    const med = k => win.map(s => s[k]).sort((a, b) => a - b)[win.length >> 1];
+    const xs = win.map(s => s[1]), ys = win.map(s => s[2]);
+    const spread = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    return { pos: [med(1), med(2)], spread };
+  }
+
+  // ---------------------------------------------------------------- steps
+
+  function goto(s) {
+    step = s;
+    hud.className = '';
+    preview = null; smooth = null; jitter = { raw: [], smooth: [] };
+    if (s === 'border') renderBorder();
+    if (s === 'steady') { preview = new SindenAim.Pipeline(draft); renderSteady(); }
+    if (s === 'calibrate') { cal = { i: 0, shots: Array(9).fill(null), redo: null, lastShot: -1e9, msg: '' }; renderCal(); }
+    if (s === 'check') startCheck();
+  }
+
+  function buttons(spec) {
+    return '<div class="row">' + spec.map(([id, label, cls]) =>
+      `<button id="${id}" class="${cls || ''}">${label}</button>`).join('') + '</div>';
+  }
+  function on(id, fn) { const el = $(id); if (el) el.addEventListener('click', fn); }
+
+  function renderBorder() {
+    hud.innerHTML =
+      '<h2>1 · Border</h2>' +
+      '<p>Aim around the screen: the <b>green dot</b> should follow the gun. If it doesn&rsquo;t, check the driver is running.</p>' +
+      '<p>Use the thinnest border that still tracks well. The games draw the same border, round their 4:3 picture.</p>' +
+      `<div class="row"><button id="bm">&minus;</button><span class="val">${draft.borderPct} %</span><button id="bp">+</button></div>` +
+      `<div class="row"><span>Crosshair in game:</span><button id="ch">${draft.crosshair ? 'ON' : 'OFF'}</button></div>` +
+      buttons([['quit', 'Exit', 'secondary'], ['next', 'Next']]);
+    on('bm', () => { draft.borderPct = Math.max(1, draft.borderPct - 1); renderBorder(); });
+    on('bp', () => { draft.borderPct = Math.min(6, draft.borderPct + 1); renderBorder(); });
+    on('ch', () => { draft.crosshair = !draft.crosshair; renderBorder(); });
+    on('quit', leave);
+    on('next', () => goto('steady'));
+  }
+
+  function rms(samples) {
+    if (samples.length < 5) return null;
+    const mx = samples.reduce((a, s) => a + s[1], 0) / samples.length;
+    const my = samples.reduce((a, s) => a + s[2], 0) / samples.length;
+    return Math.sqrt(samples.reduce((a, s) => a + (s[1] - mx) ** 2 + (s[2] - my) ** 2, 0) / samples.length);
+  }
+  function renderSteady() {
+    hud.className = 'low';
+    hud.innerHTML =
+      '<h2>2 · Steadiness</h2>' +
+      '<p>Hold the gun on the <b>centre target</b>. Grey dot: the raw aim. Green ring: smoothed.</p>' +
+      '<p class="big" id="jit">hold steady&hellip;</p>' +
+      `<div class="row"><span>Smoothing:</span><button id="sm">&minus;</button><span class="val">${draft.smoothing}</span><button id="sp">+</button></div>` +
+      '<p>More smoothing = steadier but slightly slower to follow. 4&ndash;6 suits most setups.</p>' +
+      buttons([['back', 'Back', 'secondary'], ['next', 'Next']]);
+    const set = v => { draft.smoothing = v; preview = new SindenAim.Pipeline(draft); renderSteady(); };
+    on('sm', () => set(Math.max(0, draft.smoothing - 1)));
+    on('sp', () => set(Math.min(10, draft.smoothing + 1)));
+    on('back', () => goto('border'));
+    on('next', () => goto('calibrate'));
+  }
+  function updateJitter() {
+    const el = $('jit');
+    if (!el) return;
+    const r = rms(jitter.raw), s = rms(jitter.smooth);
+    if (r === null) { el.textContent = 'hold steady…'; return; }
+    const px = v => (v * Math.hypot(area().w, area().h) / Math.SQRT2).toFixed(1) + ' px';
+    el.innerHTML = `shake: ${px(r)} raw &rarr; <span class="${s < r * 0.6 ? 'good' : ''}">${px(s)}</span> smoothed`;
+  }
+
+  function renderCal(note) {
+    hud.className = 'low passive';
+    const left = cal.redo ? cal.redo.length : 9 - cal.i;
+    hud.innerHTML =
+      '<h2>3 · Calibrate</h2>' +
+      `<p class="big">${cal.redo ? 'Reshoot the flashing target' : `Shoot target ${cal.i + 1} of 9`}</p>` +
+      '<p>Aim down the sights at the centre of the ringed target and squeeze. ' +
+      'Right-click (pedal button) undoes the last shot. Esc quits.</p>' +
+      `<p class="${note && note.warn ? 'warn' : ''}">${note ? note.text : `${left} to go`}</p>`;
+  }
+  function currentTarget() {
+    if (step === 'calibrate') return cal.redo ? cal.redo[0] : cal.i;
+    return null;
+  }
+  function shoot(t) {
+    if (step === 'check') return checkShot(t);
+    if (t - cal.lastShot < COOLDOWN_MS) return;
+    const idx = currentTarget();
+    if (idx === null || idx === undefined) return;
+    const a = aimAt(t);
+    if (!a) return renderCal({ warn: true, text: 'No aim yet: point the gun at the screen.' });
+    if (a.spread > STEADY) return renderCal({ warn: true, text: 'The aim moved during the shot. Hold steady and squeeze again.' });
+    cal.lastShot = t;
+    cal.shots[idx] = a.pos;
+    cal.flash = { idx, until: performance.now() + 300 };
+    if (cal.redo) cal.redo.shift();
+    else cal.i++;
+    if ((cal.redo && !cal.redo.length) || (!cal.redo && cal.i >= 9)) return finishCal();
+    renderCal();
+  }
+  function undo() {
+    if (cal.redo) return;
+    if (cal.i > 0) { cal.i--; cal.shots[cal.i] = null; renderCal({ text: 'Last shot undone.' }); }
+  }
+  function residuals(affine) {
+    return TARGETS.map((tg, k) => {
+      const [x, y] = SindenAim.applyAffine(affine, ...cal.shots[k]);
+      return Math.hypot(x - tg[0], y - tg[1]);
+    });
+  }
+  function finishCal() {
+    const pairs = TARGETS.map((target, k) => ({ raw: cal.shots[k], target }));
+    const affine = SindenAim.fitAffine(pairs);
+    if (!affine) { cal = { i: 0, shots: Array(9).fill(null), redo: null, lastShot: -1e9 }; return renderCal({ warn: true, text: 'Those shots could not be fitted. Starting again.' }); }
+    // a shot far off the fit of the others (a double pull, a slip) gets reshot, once
+    const res = residuals(affine);
+    const med = res.slice().sort((a, b) => a - b)[4];
+    const bad = res.map((r, k) => [r, k]).filter(([r]) => r > Math.max(0.02, 3 * med)).map(([, k]) => k);
+    if (bad.length && !cal.retried) {
+      cal.retried = true;
+      cal.redo = bad;
+      return renderCal({ warn: true, text: `${bad.length} shot${bad.length > 1 ? 's' : ''} didn’t agree with the rest. Reshoot ${bad.length > 1 ? 'them' : 'it'}.` });
+    }
+    draft.affine = affine;
+    draft.stats = {
+      before: mean(TARGETS.map((tg, k) => Math.hypot(cal.shots[k][0] - tg[0], cal.shots[k][1] - tg[1]))),
+      fit: mean(residuals(affine)),
+    };
+    goto('check');
+  }
+
+  function startCheck() {
+    const targets = Array.from({ length: 5 }, () => [0.18 + Math.random() * 0.64, 0.18 + Math.random() * 0.64]);
+    check = { targets, i: 0, errors: [], hits: [], lastShot: -1e9 };
+    preview = new SindenAim.Pipeline(draft);
+    renderCheck();
+  }
+  function renderCheck(note) {
+    hud.className = 'low passive';
+    hud.innerHTML =
+      '<h2>4 · Check</h2>' +
+      `<p class="big">Shoot target ${check.i + 1} of ${check.targets.length}</p>` +
+      '<p>The correction and smoothing are on now: this is how the games will aim.</p>' +
+      `<p class="${note && note.warn ? 'warn' : ''}">${note ? note.text : ''}</p>`;
+  }
+  function checkShot(t) {
+    if (t - check.lastShot < COOLDOWN_MS || !smooth) return;
+    check.lastShot = t;
+    const tg = check.targets[check.i];
+    check.hits.push(smooth.slice());
+    check.errors.push(Math.hypot(smooth[0] - tg[0], smooth[1] - tg[1]));
+    check.i++;
+    if (check.i < check.targets.length) return renderCheck({ text: `${pct(check.errors[check.errors.length - 1])} off` });
+    draft.stats.after = mean(check.errors);
+    renderResult();
+  }
+  function renderResult() {
+    hud.className = '';
+    const s = draft.stats;
+    const better = s.after < s.before;
+    hud.innerHTML =
+      '<h2>Result</h2>' +
+      `<p class="big">${pct(s.before)} &rarr; <span class="${better ? 'good' : 'warn'}">${pct(s.after)}</span></p>` +
+      '<p>Average distance from the target before calibration, and with it on.</p>' +
+      (better ? '' : '<p class="warn">No better than before: redo it, standing where you play and holding steady.</p>') +
+      buttons([['redo', 'Redo', 'secondary'], ['again', 'Check again', 'secondary'], ['save', 'Save']]);
+    step = 'result';
+    on('redo', () => goto('calibrate'));
+    on('again', () => goto('check'));
+    on('save', () => {
+      Object.assign(saved, draft, { enabled: true, calibratedAt: Date.now() });
+      SindenAim.save(saved);
+      hud.innerHTML = '<h2>Saved</h2><p class="big good">Calibration on in the games.</p>' +
+        '<p>Start a game and press Fullscreen. Border and crosshair settings apply on the next start.</p>' +
+        buttons([['done', 'Done']]);
+      on('done', leave);
+    });
+  }
+
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const pct = v => (v * 100).toFixed(1) + ' %';
+
+  // ---------------------------------------------------------------- drawing
+
+  function resize() {
+    const dpr = devicePixelRatio || 1;
+    cv.width = Math.round(innerWidth * dpr);
+    cv.height = Math.round(innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  addEventListener('resize', resize);
+
+  function target(x, y, r, color, lit) {
+    const [X, Y] = toScreen([x, y]);
+    ctx.strokeStyle = color; ctx.lineWidth = lit ? 3 : 1.5;
+    ctx.beginPath(); ctx.arc(X, Y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(X - r * 1.5, Y); ctx.lineTo(X + r * 1.5, Y);
+    ctx.moveTo(X, Y - r * 1.5); ctx.lineTo(X, Y + r * 1.5);
+    ctx.stroke();
+  }
+  function dot(p, r, color, fill) {
+    if (!p) return;
+    const [X, Y] = toScreen(p);
+    ctx.beginPath(); ctx.arc(X, Y, r, 0, Math.PI * 2);
+    if (fill) { ctx.fillStyle = color; ctx.fill(); } else { ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.stroke(); }
+  }
+
+  function frame() {
+    requestAnimationFrame(frame);
+    if (!stage.classList.contains('shown')) return;
+    const W = innerWidth, H = innerHeight, now = performance.now();
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    // the border, exactly as the games draw it: white, round the 4:3 box, % of its short edge
+    const a = area(), b = SindenAim.borderPx(a.w, a.h, draft.borderPct);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(a.x, a.y, a.w, b); ctx.fillRect(a.x, a.y + a.h - b, a.w, b);
+    ctx.fillRect(a.x, a.y, b, a.h); ctx.fillRect(a.x + a.w - b, a.y, b, a.h);
+    const R = Math.min(a.w, a.h) * 0.028;
+
+    if (step === 'border') dot(raw, 9, '#5fdf5f', true);
+    if (step === 'steady') {
+      target(0.5, 0.5, R, '#4f8f4f');
+      dot(raw, 6, '#7a7a7a', true);
+      dot(smooth, 14, '#5fdf5f', false);
+      updateJitter();
+    }
+    if (step === 'calibrate') {
+      const cur = currentTarget();
+      TARGETS.forEach(([x, y], k) => {
+        const done = cal.shots[k] && !(cal.redo && cal.redo.includes(k));
+        const lit = k === cur;
+        const blink = cal.redo && lit && Math.floor(now / 300) % 2;
+        target(x, y, lit ? R * 1.3 : R * 0.8, lit ? (blink ? '#e2a23d' : '#ffb84d') : done ? '#2c552c' : '#4f8f4f', lit);
+        if (done) dot(cal.shots[k], 5, '#5fdf5f', true);
+      });
+      if (cal.flash && now < cal.flash.until) dot(cal.shots[cal.flash.idx], 22, '#eaffe0', false);
+    }
+    if (step === 'check' || step === 'result') {
+      check.targets.forEach(([x, y], k) => {
+        if (k < check.i) { target(x, y, R * 0.8, '#2c552c'); dot(check.hits[k], 5, '#5fdf5f', true); }
+        else if (k === check.i && step === 'check') target(x, y, R * 1.3, '#ffb84d', true);
+      });
+      if (step === 'check') dot(smooth, 12, '#5fdf5f', false);
+      else dot(raw, 7, '#5fdf5f', true);          // the pointer, for the buttons
+    }
+  }
+  requestAnimationFrame(frame);
+  renderIntro();
+})();
+</script>
+</body>
+</html>
