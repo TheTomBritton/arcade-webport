@@ -79,6 +79,10 @@
             border: 1px solid var(--edge); border-radius: 4px; display: block;
             margin: 0 auto; image-rendering: auto; box-sizing: border-box; }
   #canvas:fullscreen { border-radius: 0; border: 0; }
+  /* Fullscreen is the wrapper, not the canvas: a fullscreen canvas is resized by SDL to
+     the whole 16:9 screen. In the wrapper the canvas stays 4:3, centred, black either side. */
+  #screen:fullscreen { background: #000; display: flex; align-items: center; justify-content: center; }
+  #screen:fullscreen #canvas { width: auto; height: 100%; max-width: 100%; border: 0; border-radius: 0; }
   .bar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
   .bar button, .bar .btn { margin: 0; }
   #status { color: var(--dim); font-size: 13px; margin-top: 8px; min-height: 18px; }
@@ -123,7 +127,7 @@
         </section>
 
         <section id="gamebox">
-          <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+          <div id="screen"><canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas></div>
           <div class="bar">
             <button id="start">Insert coin &amp; start</button>
             <button class="secondary" id="fullscreen">Fullscreen</button>
@@ -162,7 +166,7 @@
 </script>
 <script src="../lib/fflate.js"></script>
 <script src="rom-import.js"></script>
-<script src="../sinden/aim.js?v=2"></script>
+<script src="../sinden/aim.js?v=3"></script>
 <script>
 'use strict';
 (async () => {
@@ -306,7 +310,15 @@
     }
   });
 
-  $('fullscreen').addEventListener('click', () => $('canvas').requestFullscreen());
+  $('fullscreen').addEventListener('click', () => $('screen').requestFullscreen());
+  /* F11 is the engine's own fullscreen, which stretches the canvas to the whole screen:
+     take it first and toggle the page's 4:3 fullscreen instead */
+  addEventListener('keydown', e => {
+    if (e.code !== 'F11') return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (!e.repeat) document.fullscreenElement ? document.exitFullscreen() : $('screen').requestFullscreen();
+  }, true);
+  addEventListener('keyup', e => { if (e.code === 'F11') { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
 })();
 </script>
 </body>

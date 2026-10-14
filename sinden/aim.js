@@ -13,6 +13,8 @@
 //
 // The correction is a 2x3 affine fitted from the 9-point calibration, applied
 // only while the game is fullscreen (it is fitted against the whole screen).
+// Fullscreen, the corrected fraction lands on the canvas's own rectangle, which
+// is the whole screen for a fullscreen canvas or the 4:3 box in a wrapper.
 // The One Euro filter (Casiez et al., CHI 2012) smooths hard while the aim is
 // still and hardly at all while it moves, so jitter goes without adding lag to
 // a swing. The screen's outermost pixel means off-screen to the engine (that
@@ -202,12 +204,15 @@ const SindenAim = (() => {
   // was squeezed. Stretch fills the space inside the border instead: the frame
   // is the whole 4:3 canvas, as on the calibration page and in HotD2, and the
   // picture is ~2 % wider than 4:3. On a 4:3 canvas widescreen changes nothing
-  // but would bring back the 4:3 picture.
+  // but would bring back the 4:3 picture. Stretch needs a 4:3 canvas: the pages
+  // fullscreen a wrapper that keeps it so, and the engine's own fullscreen (which
+  // resizes the canvas to the screen) is switched off.
   function engineValues(profile) {
     if (!profile.enabled) return {};
     return {
       gun_border: Math.round(profile.borderPct), crosshair: profile.crosshair ? 1 : 0,
       aspect: 'stretch', widescreen: 0,
+      window_mode: 0, fullscreen: 0,     // the page's fullscreen, never the engine's (that one is 16:9)
     };
   }
 
@@ -215,13 +220,21 @@ const SindenAim = (() => {
 
   const MOUSE = ['mousemove', 'mousedown', 'mouseup', 'click', 'dblclick'];
   const POINTER = ['pointermove', 'pointerdown', 'pointerup'];   // some engines (HotD2) read these instead
+  const HOVER = ['mouseenter', 'mouseleave', 'mouseover', 'mouseout', 'pointerenter', 'pointerleave', 'pointerover', 'pointerout'];
+
+  // Fullscreen is either the canvas itself (HotD2) or a wrapper round it that keeps the
+  // canvas 4:3 (the Time Crisis pages: SDL resizes a fullscreen canvas to the whole screen).
+  const fullscreenOf = (canvas) => {
+    const f = document.fullscreenElement;
+    return f && (f === canvas || f.contains(canvas)) ? f : null;
+  };
 
   // Route the canvas's mouse events through the profile. Install BEFORE the
   // engine boots so this capture listener runs ahead of SDL's.
   function install(canvas, profile = load()) {
     const style = document.createElement('style');
     style.textContent =
-      '#' + canvas.id + ':fullscreen { cursor: none !important; }' +
+      '#' + canvas.id + ':fullscreen, :fullscreen:has(#' + canvas.id + '), :fullscreen #' + canvas.id + ' { cursor: none !important; }' +
       (profile.enabled && profile.hideCursor ? '#' + canvas.id + ' { cursor: none !important; }' : '');
     document.head.appendChild(style);
     canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -234,8 +247,11 @@ const SindenAim = (() => {
     let lastIn = null;                        // the last raw move taken: [clientX, clientY, time]
 
     const handler = (e) => {
-      if (ours.has(e) || e.target !== canvas) return;
-      const full = document.fullscreenElement === canvas;
+      if (ours.has(e)) return;
+      const fs = fullscreenOf(canvas), full = !!fs;
+      // in a fullscreen wrapper the gun can point at the black either side of the canvas:
+      // those events are the gun's too
+      if (e.target !== canvas && !(fs && fs.contains(e.target))) return;
       const vw = innerWidth, vh = innerHeight;
       let cx, cy;
       const move = e.type === 'mousemove' || e.type === 'pointermove';
@@ -243,7 +259,10 @@ const SindenAim = (() => {
       const repeat = lastIn && lastIn[0] === e.clientX && lastIn[1] === e.clientY && Math.abs(e.timeStamp - lastIn[2]) < 20;
       if ((move && !repeat) || !last) {
         const [x, y] = pipe.push(e.clientX / vw, e.clientY / vh, e.timeStamp, full);
-        cx = x * vw; cy = y * vh;
+        // the driver maps the border (round the canvas's 4:3 picture) to the whole screen,
+        // so fullscreen the fraction is a fraction of the canvas; windowed, of the viewport
+        const r = full ? canvas.getBoundingClientRect() : { left: 0, top: 0, width: vw, height: vh };
+        cx = r.left + x * r.width; cy = r.top + y * r.height;
         last = [cx, cy];
         lastIn = [e.clientX, e.clientY, e.timeStamp];
       } else {
@@ -268,7 +287,23 @@ const SindenAim = (() => {
       canvas.dispatchEvent(out);
     };
     for (const type of [...MOUSE, ...POINTER]) window.addEventListener(type, handler, true);
-    document.addEventListener('fullscreenchange', () => { pipe.reset(); last = null; });
+    // Fullscreen in a wrapper the real pointer wanders over the black either side, which
+    // would tell the engine the mouse left its window (SDL then reads every aim as off-screen).
+    // Keep those from the canvas while fullscreen, and say the mouse is in when it starts.
+    const hover = (e) => {
+      if (ours.has(e) || !fullscreenOf(canvas)) return;
+      if (e.target === canvas || e.relatedTarget === canvas || (e.target && e.target.contains && e.target.contains(canvas))) e.stopImmediatePropagation();
+    };
+    for (const type of HOVER) window.addEventListener(type, hover, true);
+    document.addEventListener('fullscreenchange', () => {
+      pipe.reset(); last = null;
+      if (fullscreenOf(canvas)) {
+        for (const type of ['mouseover', 'mouseenter']) {
+          const ev = new MouseEvent(type, { bubbles: type === 'mouseover', view: window, clientX: innerWidth / 2, clientY: innerHeight / 2 });
+          ours.add(ev); canvas.dispatchEvent(ev);
+        }
+      }
+    });
     return { profile, pipe };
   }
 
