@@ -113,6 +113,7 @@ async function moveAndRead(page, x, y) {
     }, CFG);
     check('on: border written to the engine settings', /^gun_border = 3$/m.test(cfg), cfg);
     check('on: crosshair written to the engine settings', /^crosshair = 0$/m.test(cfg), cfg);
+    check('on: the frame fills the 4:3 canvas (stretch, no widescreen)', /^aspect = stretch$/m.test(cfg) && /^widescreen = 0$/m.test(cfg), cfg);
     // fullscreen: the correction applies (this profile shifts aim right by 5 % of the screen)
     await page.click('#fullscreen');
     await page.waitForFunction(() => document.fullscreenElement, { timeout: 5000 }).catch(() => {});

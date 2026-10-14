@@ -119,7 +119,7 @@ check('patchCfg appends a missing key', /^crosshair = 0$/m.test(patched));
 check('patchCfg keeps the other lines', patched.startsWith('# my settings\nscale = 2\n') && /volume = 80/.test(patched));
 check('patchCfg on an empty file', A.patchCfg('', { gun_border: 3 }) === 'gun_border = 3\n');
 check('engineValues empty while off', Object.keys(A.engineValues(A.defaults())).length === 0);
-check('engineValues when on', JSON.stringify(A.engineValues(Object.assign(A.defaults(), { enabled: true, borderPct: 3, crosshair: true }))) === '{"gun_border":3,"crosshair":1}');
+check('engineValues when on', JSON.stringify(A.engineValues(Object.assign(A.defaults(), { enabled: true, borderPct: 3, crosshair: true }))) === '{"gun_border":3,"crosshair":1,"aspect":"stretch","widescreen":0}');
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');
 process.exit(failures ? 1 : 0);

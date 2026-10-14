@@ -1,0 +1,9 @@
+# The aim layer changes with the game pages and the calibration suite, which
+# call into it: always revalidate (the site default is a year, immutable, and
+# a stale copy breaks pages that need its newer functions). The pages also
+# load it as aim.js?v=N, so bump N with any change that pages depend on.
+<IfModule mod_headers.c>
+  <FilesMatch "^(aim|gun|tracker)\.js$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

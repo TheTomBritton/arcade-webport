@@ -84,7 +84,7 @@
 </head>
 <body>
 <header>
-  
+
   <h1>Light gun calibration</h1>
 </header>
 <main>
@@ -98,19 +98,24 @@
       <li><b>Calibrate</b> &mdash; shoot 9 targets; the games correct the aim to match.</li>
       <li><b>Check</b> &mdash; shoot a few random targets with the correction on, and save.</li>
     </ol>
+    <p><b>Shooting gallery</b> &mdash; a one-minute practice round that aims exactly as the games do.
+       Six shots to a clip: aim off the screen and pull the trigger (or press the pedal) to reload.
+       Don&rsquo;t shoot the blue hostages.</p>
     <p>Stand where you play. Your gun's driver must be running and treating the gun as a mouse.
        Settings are kept in this browser and apply to every game in the arcade, in fullscreen.</p>
     <button id="go">Start calibration</button>
+    <button id="gallery">Shooting gallery</button>
     <button class="secondary" id="toggle"></button>
+    <button class="secondary" id="sound"></button>
     <button class="secondary" id="reset">Reset to defaults</button>
     <div id="profile"></div>
   </section>
 </main>
-<footer>Esc leaves the calibration screen at any point; nothing is saved until the last step.</footer>
+<footer>Esc leaves the calibration screen at any point; nothing is saved until the last step. M mutes the sound.</footer>
 
 <div id="stage"><canvas id="cv"></canvas><div id="hud"></div></div>
 
-<script src="../sinden/aim.js"></script>
+<script src="../sinden/aim.js?v=2"></script>
 <script>
 'use strict';
 (() => {
@@ -134,6 +139,78 @@
   let jitter = { raw: [], smooth: [] };
   let cal = null;                 // { i, shots: [raw|null x9], redo: [indices], lastShot }
   let check = null;               // { targets, i, errors: [], hits: [] }
+  let gal = null;                 // the shooting gallery's round, see startGallery
+
+  // ---------------------------------------------------------------- sound
+  //
+  // Everything is synthesised with Web Audio (no files): a gunshot (a burst of
+  // filtered noise over a falling thump), a hit (a struck-metal ping), a dry fire,
+  // a reload, beeps. The context starts on the first click (browsers need a gesture).
+
+  const SOUND_KEY = 'arcade.sinden.sound';
+  let soundOn = true;
+  try { soundOn = localStorage.getItem(SOUND_KEY) !== 'off'; } catch (_) {}
+  let ac = null, noiseBuf = null, master = null;
+  function audio() {
+    if (!soundOn) return null;
+    if (!ac) {
+      try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { return null; }
+      master = ac.createGain(); master.gain.value = 0.5; master.connect(ac.destination);
+      noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    if (ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  // an envelope: up to `peak` at once, then an exponential fall over `dur` seconds
+  function env(g, t, peak, dur) {
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  }
+  function noise(t, dur, peak, type, freq, q, freqEnd) {
+    const src = ac.createBufferSource(); src.buffer = noiseBuf;
+    const f = ac.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t); f.Q.value = q || 0.7;
+    if (freqEnd) f.frequency.exponentialRampToValueAtTime(freqEnd, t + dur);
+    const g = ac.createGain(); env(g, t, peak, dur);
+    src.connect(f); f.connect(g); g.connect(master);
+    src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.05);
+  }
+  function tone(t, dur, peak, type, freq, freqEnd) {
+    const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (freqEnd) o.frequency.exponentialRampToValueAtTime(freqEnd, t + dur);
+    const g = ac.createGain(); env(g, t, peak, dur);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  const sfx = {
+    shot() { if (!audio()) return; const t = ac.currentTime;
+      noise(t, 0.22, 0.9, 'lowpass', 5000, 0.8, 400); tone(t, 0.16, 0.8, 'sine', 160, 38); noise(t, 0.04, 0.6, 'highpass', 3000); },
+    hit(bull) { if (!audio()) return; const t = ac.currentTime + 0.03, f = bull ? 1560 : 1180;
+      tone(t, 0.35, 0.35, 'sine', f); tone(t, 0.25, 0.18, 'sine', f * 1.51); tone(t, 0.12, 0.12, 'triangle', f * 2.7); },
+    bonus() { if (!audio()) return; const t = ac.currentTime + 0.03;
+      [1320, 1760, 2350].forEach((f, i) => tone(t + i * 0.06, 0.22, 0.25, 'square', f)); },
+    penalty() { if (!audio()) return; const t = ac.currentTime + 0.03;
+      tone(t, 0.45, 0.35, 'sawtooth', 140, 70); tone(t, 0.45, 0.25, 'square', 147, 73); },
+    dry() { if (!audio()) return; const t = ac.currentTime;
+      noise(t, 0.03, 0.5, 'bandpass', 2600, 4); tone(t, 0.02, 0.2, 'square', 1900); },
+    reload() { if (!audio()) return; const t = ac.currentTime;
+      noise(t, 0.05, 0.6, 'bandpass', 1800, 3); noise(t + 0.16, 0.07, 0.8, 'bandpass', 3200, 3); tone(t + 0.16, 0.05, 0.2, 'square', 900); },
+    beep(f = 880, d = 0.12) { if (!audio()) return; tone(ac.currentTime, d, 0.25, 'square', f); },
+    click() { if (!audio()) return; const t = ac.currentTime; tone(t, 0.05, 0.2, 'square', 1200); tone(t + 0.05, 0.06, 0.2, 'square', 1600); },
+    warn() { if (!audio()) return; const t = ac.currentTime; tone(t, 0.14, 0.25, 'square', 330); tone(t + 0.16, 0.2, 0.25, 'square', 247); },
+    fanfare() { if (!audio()) return; const t = ac.currentTime;
+      [523, 659, 784, 1047].forEach((f, i) => tone(t + i * 0.11, i === 3 ? 0.5 : 0.14, 0.25, 'square', f)); },
+  };
+  function setSound(on) {
+    soundOn = on;
+    try { localStorage.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch (_) {}
+    if (!on && ac) ac.suspend();
+    renderIntro();
+  }
+  $('sound').addEventListener('click', () => { setSound(!soundOn); sfx.click(); });
+  addEventListener('keydown', e => { if (e.key === 'm' || e.key === 'M') setSound(!soundOn); });
 
   // ---------------------------------------------------------------- intro page
 
@@ -151,15 +228,25 @@
     $('profile').innerHTML = describe(saved).replace(/ON|OFF/, m => `<span class="${m === 'ON' ? 'on' : 'off'}">${m}</span>`);
     $('toggle').textContent = saved.enabled ? 'Turn off in the games' : 'Turn on in the games';
     $('toggle').disabled = !saved.calibratedAt && !saved.enabled;
+    $('sound').textContent = 'Sound: ' + (soundOn ? 'on' : 'off');
   }
   $('toggle').addEventListener('click', () => { saved.enabled = !saved.enabled; SindenAim.save(saved); renderIntro(); });
   $('reset').addEventListener('click', () => { saved = SindenAim.defaults(); SindenAim.save(saved); renderIntro(); });
-  $('go').addEventListener('click', async () => {
-    draft = Object.assign(SindenAim.defaults(), saved, { affine: SindenAim.IDENTITY.slice() });
+  async function enterStage() {
+    audio();
     stage.classList.add('shown');
     try { await document.documentElement.requestFullscreen(); } catch (_) {}
     resize();
+  }
+  $('go').addEventListener('click', async () => {
+    draft = Object.assign(SindenAim.defaults(), saved, { affine: SindenAim.IDENTITY.slice() });
+    await enterStage();
     goto('border');
+  });
+  $('gallery').addEventListener('click', async () => {
+    draft = Object.assign(SindenAim.defaults(), saved);
+    await enterStage();
+    goto('gallery');
   });
   document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement && stage.classList.contains('shown')) leave();
@@ -169,6 +256,7 @@
     stage.classList.remove('shown');
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     step = null;
+    gal = null;
     renderIntro();
   }
 
@@ -188,7 +276,7 @@
     hist.push([e.timeStamp, raw[0], raw[1]]);
     while (hist.length && hist[0][0] < e.timeStamp - 1500) hist.shift();
     if (preview) {
-      smooth = preview.push(raw[0], raw[1], e.timeStamp, step === 'check');
+      smooth = preview.push(raw[0], raw[1], e.timeStamp, step === 'check' || step === 'gallery');
       jitter.raw.push([e.timeStamp, raw[0], raw[1]]);
       jitter.smooth.push([e.timeStamp, smooth[0], smooth[1]]);
       for (const k of ['raw', 'smooth']) while (jitter[k].length && jitter[k][0][0] < e.timeStamp - 1000) jitter[k].shift();
@@ -199,8 +287,9 @@
       const [sx, sy] = toScreen([e.clientX / innerWidth, e.clientY / innerHeight]);
       const hit = document.elementFromPoint(sx, sy);
       const btn = hit && hit.closest('#hud button');
-      if (btn) { if (!btn.disabled) btn.click(); return; }
+      if (btn) { if (!btn.disabled) { sfx.shot(); sfx.click(); btn.click(); } return; }
     }
+    if (step === 'gallery') return galleryPress(e.button, e.timeStamp);
     if (e.button === 2) { if (step === 'calibrate') undo(); return; }
     if (e.button === 0 && (step === 'calibrate' || step === 'check')) shoot(e.timeStamp);
   });
@@ -226,6 +315,7 @@
     if (s === 'steady') { preview = new SindenAim.Pipeline(draft); renderSteady(); }
     if (s === 'calibrate') { cal = { i: 0, shots: Array(9).fill(null), redo: null, lastShot: -1e9, msg: '' }; renderCal(); }
     if (s === 'check') startCheck();
+    if (s === 'gallery') startGallery();
   }
 
   function buttons(spec) {
@@ -298,9 +388,11 @@
     if (t - cal.lastShot < COOLDOWN_MS) return;
     const idx = currentTarget();
     if (idx === null || idx === undefined) return;
+    sfx.shot();
     const a = aimAt(t);
-    if (!a) return renderCal({ warn: true, text: 'No aim yet: point the gun at the screen.' });
-    if (a.spread > STEADY) return renderCal({ warn: true, text: 'The aim moved during the shot. Hold steady and squeeze again.' });
+    if (!a) { sfx.warn(); return renderCal({ warn: true, text: 'No aim yet: point the gun at the screen.' }); }
+    if (a.spread > STEADY) { sfx.warn(); return renderCal({ warn: true, text: 'The aim moved during the shot. Hold steady and squeeze again.' }); }
+    sfx.hit(true);
     cal.lastShot = t;
     cal.shots[idx] = a.pos;
     cal.flash = { idx, until: performance.now() + 300 };
@@ -311,7 +403,7 @@
   }
   function undo() {
     if (cal.redo) return;
-    if (cal.i > 0) { cal.i--; cal.shots[cal.i] = null; renderCal({ text: 'Last shot undone.' }); }
+    if (cal.i > 0) { cal.i--; cal.shots[cal.i] = null; sfx.reload(); renderCal({ text: 'Last shot undone.' }); }
   }
   function residuals(affine) {
     return TARGETS.map((tg, k) => {
@@ -329,6 +421,7 @@
     const bad = res.map((r, k) => [r, k]).filter(([r]) => r > Math.max(0.02, 3 * med)).map(([, k]) => k);
     if (bad.length && !cal.retried) {
       cal.retried = true;
+      sfx.warn();
       cal.redo = bad;
       return renderCal({ warn: true, text: `${bad.length} shot${bad.length > 1 ? 's' : ''} didn’t agree with the rest. Reshoot ${bad.length > 1 ? 'them' : 'it'}.` });
     }
@@ -360,6 +453,7 @@
     const tg = check.targets[check.i];
     check.hits.push(smooth.slice());
     check.errors.push(Math.hypot(smooth[0] - tg[0], smooth[1] - tg[1]));
+    sfx.shot(); sfx.hit(check.errors[check.errors.length - 1] < 0.02);
     check.i++;
     if (check.i < check.targets.length) return renderCheck({ text: `${pct(check.errors[check.errors.length - 1])} off` });
     draft.stats.after = mean(check.errors);
@@ -376,6 +470,7 @@
       (better ? '' : '<p class="warn">No better than before: redo it, standing where you play and holding steady.</p>') +
       buttons([['redo', 'Redo', 'secondary'], ['again', 'Check again', 'secondary'], ['save', 'Save']]);
     step = 'result';
+    if (better) sfx.fanfare(); else sfx.warn();
     on('redo', () => goto('calibrate'));
     on('again', () => goto('check'));
     on('save', () => {
@@ -383,9 +478,185 @@
       SindenAim.save(saved);
       hud.innerHTML = '<h2>Saved</h2><p class="big good">Calibration on in the games.</p>' +
         '<p>Start a game and press Fullscreen. Border and crosshair settings apply on the next start.</p>' +
-        buttons([['done', 'Done']]);
+        buttons([['done', 'Done', 'secondary'], ['range', 'Try the shooting gallery']]);
       on('done', leave);
+      on('range', () => goto('gallery'));
     });
+  }
+
+  // ---------------------------------------------------------------- shooting gallery
+  //
+  // A one-minute round that aims exactly as the games do: the saved correction and
+  // smoothing, the shot landing where the smoothed aim is. Targets pop up round the
+  // picture and drop again; the bull scores most, a quick shot and a run of hits
+  // score more. Gold = bonus, blue = hostage (a penalty). Six to a clip: aim off the
+  // screen and pull (as in the games), or press the pedal, to reload.
+
+  const GAL = { ms: 60000, clip: 6, countdown: 3000 };
+  const BEST_KEY = 'arcade.sinden.gallery.best';
+  function best() { try { return +localStorage.getItem(BEST_KEY) || 0; } catch (_) { return 0; } }
+
+  function startGallery() {
+    preview = new SindenAim.Pipeline(draft);
+    hud.className = 'low passive';
+    hud.innerHTML = '';
+    const now = performance.now();
+    gal = { start: now + GAL.countdown, end: now + GAL.countdown + GAL.ms, ammo: GAL.clip, score: 0, shots: 0, hits: 0,
+            hostages: 0, combo: 0, targets: [], fx: [], nextSpawn: 0, lastShot: -1e9, beeped: 0, over: false, best: best() };
+  }
+  const galOffscreen = () => !raw || raw[0] <= SindenAim.EDGE || raw[0] >= 1 - SindenAim.EDGE || raw[1] <= SindenAim.EDGE || raw[1] >= 1 - SindenAim.EDGE;
+
+  function spawnTarget(now) {
+    const p = Math.min(1, (now - gal.start) / GAL.ms);        // 0 .. 1 through the round
+    const roll = Math.random();
+    const kind = roll < 0.1 ? 'bonus' : roll < 0.22 && p > 0.15 ? 'hostage' : 'target';
+    const r = (kind === 'bonus' ? 0.035 : 0.075 - 0.03 * p) * (0.85 + Math.random() * 0.3);   // fraction of the box's height
+    const life = (kind === 'bonus' ? 1300 : 2900 - 1300 * p) * (0.85 + Math.random() * 0.3);
+    for (let tries = 0; tries < 20; tries++) {                // keep clear of the others and of the HUD rows
+      const x = 0.12 + Math.random() * 0.76, y = 0.2 + Math.random() * 0.62;
+      const clear = gal.targets.every(t => Math.hypot((t.x - x) * 4 / 3, t.y - y) > t.r + r + 0.04);
+      if (clear) { gal.targets.push({ x, y, r, kind, born: now, life }); return; }
+    }
+  }
+
+  function galleryPress(button, t) {
+    if (!gal || gal.over) return;
+    const now = performance.now();
+    if (button === 1 || button === 2 || (button === 0 && galOffscreen())) {     // the pedal, or a shot off the screen: reload
+      if (gal.ammo < GAL.clip) { gal.ammo = GAL.clip; sfx.reload(); }
+      return;
+    }
+    if (button !== 0 || now < gal.start || t - gal.lastShot < 90) return;
+    gal.lastShot = t;
+    if (!gal.ammo) { sfx.dry(); gal.fx.push({ kind: 'text', x: 0.5, y: 0.5, text: 'RELOAD!', born: now, color: '#ffb84d' }); return; }
+    gal.ammo--; gal.shots++;
+    sfx.shot();
+    const p = smooth || raw, a = area();
+    // the topmost target under the shot (the newest is drawn last, on top)
+    let hit = null, d = 0;
+    for (let k = gal.targets.length - 1; k >= 0; k--) {
+      const tg = gal.targets[k], dist = Math.hypot((p[0] - tg.x) * a.w, (p[1] - tg.y) * a.h) / (tg.r * a.h);
+      if (dist <= 1) { hit = tg; d = dist; break; }
+    }
+    if (!hit) {
+      gal.combo = 0;
+      gal.fx.push({ kind: 'hole', x: p[0], y: p[1], born: now });
+      return;
+    }
+    gal.targets.splice(gal.targets.indexOf(hit), 1);
+    let pts, color;
+    if (hit.kind === 'hostage') {
+      pts = -250; color = '#6fa8ff'; gal.combo = 0; gal.hostages++; sfx.penalty();
+    } else {
+      gal.hits++;
+      gal.combo++;
+      const ring = d < 0.34 ? 100 : d < 0.67 ? 50 : 25;
+      const quick = Math.max(0, Math.round(50 * (1 - (now - hit.born) / hit.life)));
+      const mult = Math.min(4, 1 + Math.floor(gal.combo / 5));
+      pts = ((hit.kind === 'bonus' ? 300 : ring) + quick) * mult;
+      color = hit.kind === 'bonus' ? '#ffd84d' : ring === 100 ? '#eaffe0' : '#5fdf5f';
+      if (hit.kind === 'bonus') sfx.bonus(); else sfx.hit(ring === 100);
+    }
+    gal.score = Math.max(0, gal.score + pts);
+    gal.fx.push({ kind: 'burst', x: hit.x, y: hit.y, r: hit.r, born: now, color });
+    gal.fx.push({ kind: 'text', x: hit.x, y: hit.y - hit.r, text: (pts > 0 ? '+' : '') + pts, born: now, color });
+  }
+
+  function galleryOver(now) {
+    gal.over = true;
+    gal.targets = [];
+    const prev = gal.best, record = gal.score > prev;
+    if (record) { try { localStorage.setItem(BEST_KEY, String(gal.score)); } catch (_) {} gal.best = gal.score; }
+    if (record && gal.score > 0) sfx.fanfare(); else sfx.beep(440, 0.5);
+    const acc = gal.shots ? Math.round(100 * gal.hits / gal.shots) : 0;
+    hud.className = '';
+    hud.innerHTML =
+      '<h2>Time up</h2>' +
+      `<p class="big">${gal.score} points${record && gal.score > 0 ? ' &middot; <span class="good">new best!</span>' : ''}</p>` +
+      `<p>${gal.hits} hits from ${gal.shots} shots (${acc} % accuracy)` +
+      (gal.hostages ? `, <span class="warn">${gal.hostages} hostage${gal.hostages > 1 ? 's' : ''} hit</span>` : '') + '</p>' +
+      `<p>Best: ${gal.best}</p>` +
+      (acc < 50 && gal.shots >= 10 ? '<p class="warn">Lots of misses? Run the calibration again, standing where you play.</p>' : '') +
+      buttons([['quit', 'Exit', 'secondary'], ['again', 'Play again']]);
+    on('quit', leave);
+    on('again', () => goto('gallery'));
+  }
+
+  function drawGallery(now) {
+    const a = area(), b = SindenAim.borderPx(a.w, a.h, draft.borderPct);
+    const X = x => a.x + x * a.w, Y = y => a.y + y * a.h;
+    // round state
+    if (!gal.over) {
+      if (now < gal.start) {
+        const n = Math.ceil((gal.start - now) / 1000);
+        if (n !== gal.beeped) { gal.beeped = n; sfx.beep(660, 0.1); }
+      } else {
+        if (gal.beeped > 0) { gal.beeped = 0; sfx.beep(1320, 0.25); }
+        const left = Math.ceil((gal.end - now) / 1000);
+        if (left <= 5 && left > 0 && left !== -gal.beeped) { gal.beeped = -left; sfx.beep(990, 0.08); }
+        gal.targets = gal.targets.filter(t => now - t.born < t.life);
+        const want = 2 + Math.floor(3 * Math.min(1, (now - gal.start) / GAL.ms));
+        if (now >= gal.nextSpawn && gal.targets.length < want) { spawnTarget(now); gal.nextSpawn = now + 250 + Math.random() * 450; }
+        if (now >= gal.end) galleryOver(now);
+      }
+    }
+    // targets: pop up, then a ring round them runs down their time
+    for (const t of gal.targets) {
+      const age = now - t.born, k = Math.min(1, age / 120), R = t.r * a.h * k, cx = X(t.x), cy = Y(t.y);
+      const rings = t.kind === 'hostage' ? ['#2a5bd7', '#eaf0ff', '#2a5bd7'] : t.kind === 'bonus' ? ['#ffd84d', '#a86f00', '#fff3b0'] : ['#e23d3d', '#ffffff', '#e23d3d'];
+      rings.forEach((c, i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(cx, cy, R * (1 - i * 0.33), 0, Math.PI * 2); ctx.fill(); });
+      if (t.kind === 'hostage') {                                  // a "don't shoot" bar across it
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(3, R * 0.16);
+        ctx.beginPath(); ctx.moveTo(cx - R * 0.7, cy + R * 0.7); ctx.lineTo(cx + R * 0.7, cy - R * 0.7); ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgba(234,255,224,.75)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx, cy, R + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - age / t.life)); ctx.stroke();
+    }
+    // effects: bursts, score pop-ups, bullet holes
+    gal.fx = gal.fx.filter(f => now - f.born < (f.kind === 'hole' ? 1500 : 700));
+    for (const f of gal.fx) {
+      const u = (now - f.born) / (f.kind === 'hole' ? 1500 : 700);
+      ctx.globalAlpha = 1 - u;
+      if (f.kind === 'burst') { ctx.strokeStyle = f.color; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(X(f.x), Y(f.y), f.r * a.h * (1 + u * 1.2), 0, Math.PI * 2); ctx.stroke(); }
+      if (f.kind === 'hole') { ctx.fillStyle = '#9a9a9a'; ctx.beginPath(); ctx.arc(X(f.x), Y(f.y), 5, 0, Math.PI * 2); ctx.fill(); }
+      if (f.kind === 'text') {
+        ctx.fillStyle = f.color; ctx.font = `700 ${Math.round(a.h * 0.045)}px ui-monospace, Menlo, Consolas, monospace`;
+        ctx.textAlign = 'center'; ctx.fillText(f.text, X(f.x), Y(f.y) - u * a.h * 0.05);
+      }
+    }
+    ctx.globalAlpha = 1;
+    // the crosshair, if the games draw one
+    if (draft.crosshair && !gal.over && (smooth || raw)) {
+      const [cx, cy] = toScreen(smooth || raw), r = a.h * 0.02;
+      ctx.strokeStyle = '#5fdf5f'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy); ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
+    }
+    if (gal.over) { dot(raw, 7, '#5fdf5f', true); return; }        // the pointer, for the buttons
+    // HUD inside the border: score, time, combo; the clip along the bottom
+    const fs = Math.round(a.h * 0.04), pad = b + a.h * 0.02;
+    ctx.font = `700 ${fs}px ui-monospace, Menlo, Consolas, monospace`; ctx.fillStyle = '#eaffe0';
+    ctx.textAlign = 'left'; ctx.fillText('SCORE ' + String(gal.score).padStart(5, '0'), a.x + pad, a.y + pad + fs);
+    ctx.textAlign = 'right';
+    const secs = Math.max(0, Math.ceil((gal.end - Math.max(now, gal.start)) / 1000));
+    ctx.fillStyle = secs <= 5 ? '#ffb84d' : '#eaffe0';
+    ctx.fillText('TIME ' + secs, a.x + a.w - pad, a.y + pad + fs);
+    const mult = Math.min(4, 1 + Math.floor(gal.combo / 5));
+    if (mult > 1) { ctx.textAlign = 'center'; ctx.fillStyle = '#ffd84d'; ctx.fillText('x' + mult, a.x + a.w / 2, a.y + pad + fs); }
+    for (let i = 0; i < GAL.clip; i++) {                            // the clip: brass for a round, grey for spent
+      ctx.fillStyle = i < gal.ammo ? '#e0b040' : '#333';
+      ctx.fillRect(a.x + pad + i * fs * 0.6, a.y + a.h - pad - fs * 1.2, fs * 0.38, fs * 1.2);
+    }
+    ctx.textAlign = 'center';
+    if (now < gal.start) {
+      ctx.fillStyle = '#eaffe0'; ctx.font = `700 ${Math.round(a.h * 0.16)}px ui-monospace, Menlo, Consolas, monospace`;
+      ctx.fillText(String(Math.ceil((gal.start - now) / 1000)), a.x + a.w / 2, a.y + a.h * 0.55);
+      ctx.font = `600 ${Math.round(a.h * 0.03)}px ui-monospace, Menlo, Consolas, monospace`;
+      ctx.fillText('Shoot the red targets · gold = bonus · don’t hit the blue hostages', a.x + a.w / 2, a.y + a.h * 0.7);
+      ctx.fillText('Six shots to a clip: aim off the screen and pull, or press the pedal, to reload', a.x + a.w / 2, a.y + a.h * 0.75);
+    } else if (!gal.ammo && Math.floor(now / 350) % 2) {
+      ctx.fillStyle = '#ffb84d'; ctx.font = `700 ${Math.round(a.h * 0.06)}px ui-monospace, Menlo, Consolas, monospace`;
+      ctx.fillText('RELOAD!', a.x + a.w / 2, a.y + a.h - pad - fs * 0.2);
+    }
   }
 
   const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
@@ -455,6 +726,7 @@
       if (step === 'check') dot(smooth, 12, '#5fdf5f', false);
       else dot(raw, 7, '#5fdf5f', true);          // the pointer, for the buttons
     }
+    if (step === 'gallery' && gal) drawGallery(now);
   }
   requestAnimationFrame(frame);
   renderIntro();

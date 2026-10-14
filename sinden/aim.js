@@ -194,9 +194,21 @@ const SindenAim = (() => {
   }
 
   // What the profile asks of the engine; {} when the profile is off.
+  //
+  // aspect = stretch, widescreen = 0: the Time Crisis engine draws its border
+  // hugging the picture, and keeping the picture 4:3 inside a border of equal
+  // thickness all round leaves the white frame narrower than 4:3 (1412 x 1080
+  // in a 1440 x 1080 box). The gun's driver solves the frame as 4:3, so its aim
+  // was squeezed. Stretch fills the space inside the border instead: the frame
+  // is the whole 4:3 canvas, as on the calibration page and in HotD2, and the
+  // picture is ~2 % wider than 4:3. On a 4:3 canvas widescreen changes nothing
+  // but would bring back the 4:3 picture.
   function engineValues(profile) {
     if (!profile.enabled) return {};
-    return { gun_border: Math.round(profile.borderPct), crosshair: profile.crosshair ? 1 : 0 };
+    return {
+      gun_border: Math.round(profile.borderPct), crosshair: profile.crosshair ? 1 : 0,
+      aspect: 'stretch', widescreen: 0,
+    };
   }
 
   // --- installing on a game page -----------------------------------------------
