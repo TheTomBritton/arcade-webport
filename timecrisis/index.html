@@ -142,7 +142,7 @@
         <dl class="controls">
           <div><dt>Aim</dt><dd>mouse / light gun</dd></div>
           <div><dt>Shoot</dt><dd>left click / trigger</dd></div>
-          <div><dt>Pedal (cover)</dt><dd>right click</dd></div>
+          <div><dt>Pedal (cover)</dt><dd>right click / Space</dd></div>
           <div><dt>Coin</dt><dd>5</dd></div>
           <div><dt>Start</dt><dd>Enter</dd></div>
           <div><dt>White border (Sinden)</dt><dd>F8</dd></div>
@@ -166,7 +166,7 @@
 </script>
 <script src="../lib/fflate.js"></script>
 <script src="rom-import.js"></script>
-<script src="../sinden/aim.js?v=3"></script>
+<script src="../sinden/aim.js?v=5"></script>
 <script>
 'use strict';
 (async () => {
@@ -174,6 +174,7 @@
   /* light gun: the calibration suite's correction + smoothing, cursor hidden in fullscreen */
   const gunProfile = SindenAim.load();
   SindenAim.install($('canvas'), gunProfile);
+  SindenAim.gapOverlay($('canvas'), gunProfile);   // black between the gun border and the picture
   const manifest = await loadManifest('chips.json');
   const GAME = manifest.game;
   /* files the game saves in its working directory, persisted across visits */

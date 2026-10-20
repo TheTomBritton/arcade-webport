@@ -42,6 +42,7 @@ const SindenAim = (() => {
       affine: IDENTITY.slice(),
       smoothing: 5,              // 0 (off) .. 10 (heaviest), see filterParams
       borderPct: 4,              // the engine's gun_border, 0..6 % of the short edge
+      gapPct: 2,                 // a black gap inside the white border, % of the short edge (see innerGap)
       crosshair: false,          // the engine's aiming cross
       hideCursor: true,
       calibratedAt: null,
@@ -170,14 +171,25 @@ const SindenAim = (() => {
     return pct > 0 ? Math.floor(pct * Math.min(W, H) / 100) : 0;
   }
 
+  // The black gap between the white border and the picture, in whole % (0 = none). The
+  // camera finds the border by brightness: a bright scene touching it (TC2 past the first
+  // area) merges with the band, its inner edge is lost and the aim freezes. Black beside
+  // the band keeps it apart. Border + gap stays within the engines' 6 % limit.
+  const MAX_BORDER = 6;
+  function innerGap(borderPct, profile) {
+    const b = Math.round(borderPct);
+    return b > 0 ? Math.max(0, Math.min(Math.round(profile.gapPct || 0), MAX_BORDER - b)) : 0;
+  }
+
   // The picture's rectangle inside a W x H bordered area: the largest centred
-  // 4:3 rectangle within the border, in whole pixels.
-  function pictureRect(W, H, pct, aspect = ASPECT) {
-    const b = borderPx(W, H, pct), ow = W - 2 * b, oh = H - 2 * b;
+  // 4:3 rectangle within the border (and the gap inside it), in whole pixels.
+  function pictureRect(W, H, pct, aspect = ASPECT, gapPct = 0) {
+    const b = borderPx(W, H, pct), inner = gapPct > 0 ? borderPx(W, H, pct + gapPct) : b;
+    const ow = W - 2 * inner, oh = H - 2 * inner;
     let w, h;
     if (ow <= oh * aspect) { w = ow; h = Math.round(ow / aspect); }
     else { h = oh; w = Math.round(oh * aspect); }
-    return { x: b + Math.floor((ow - w) / 2), y: b + Math.floor((oh - h) / 2), w, h, border: b };
+    return { x: inner + Math.floor((ow - w) / 2), y: inner + Math.floor((oh - h) / 2), w, h, border: b };
   }
 
   // --- the engine's config -----------------------------------------------------
@@ -207,12 +219,19 @@ const SindenAim = (() => {
   // but would bring back the 4:3 picture. Stretch needs a 4:3 canvas: the pages
   // fullscreen a wrapper that keeps it so, and the engine's own fullscreen (which
   // resizes the canvas to the screen) is switched off.
+  //
+  // key_pedal = Space: a gun without a pedal. The engines bind Space to the
+  // trigger and Z to the pedal; with the gun's trigger firing, Space is the
+  // pedal (hold it to come out of cover) and the trigger's keyboard key is its
+  // alternate, Return. The keys are SDL scancode names.
   function engineValues(profile) {
     if (!profile.enabled) return {};
     return {
-      gun_border: Math.round(profile.borderPct), crosshair: profile.crosshair ? 1 : 0,
+      // the engine draws border + gap in white; gapOverlay paints the gap black
+      gun_border: Math.round(profile.borderPct) + innerGap(profile.borderPct, profile), crosshair: profile.crosshair ? 1 : 0,
       aspect: 'stretch', widescreen: 0,
       window_mode: 0, fullscreen: 0,     // the page's fullscreen, never the engine's (that one is 16:9)
+      key_pedal: 'Space', key_trigger: 'Return',
     };
   }
 
@@ -307,10 +326,40 @@ const SindenAim = (() => {
     return { profile, pipe };
   }
 
+  // The Time Crisis engines draw only white: they are given gun_border = border + gap
+  // (engineValues) and this paints the inner gap of that band black, over the canvas.
+  function gapOverlay(canvas, profile = load()) {
+    const pct = Math.round(profile.borderPct), gap = innerGap(pct, profile);
+    if (!profile.enabled || !gap) return null;
+    const host = canvas.parentElement;
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+    const el = document.createElement('div');
+    el.className = 'sinden-gap';
+    el.style.cssText = 'position:absolute;pointer-events:none;box-sizing:border-box;border:0 solid #000;display:none';
+    canvas.after(el);
+    const place = () => {
+      const W = canvas.width, H = canvas.height, cw = canvas.clientWidth, ch = canvas.clientHeight;
+      if (!W || !H || !cw || !ch) { el.style.display = 'none'; return; }
+      const b = borderPx(W, H, pct), g = borderPx(W, H, pct + gap) - b, sx = cw / W, sy = ch / H;
+      const cr = canvas.getBoundingClientRect(), hr = host.getBoundingClientRect();
+      const left = cr.left - hr.left - host.clientLeft + canvas.clientLeft;
+      const top = cr.top - hr.top - host.clientTop + canvas.clientTop;
+      Object.assign(el.style, {
+        display: 'block', left: left + b * sx + 'px', top: top + b * sy + 'px',
+        width: (W - 2 * b) * sx + 'px', height: (H - 2 * b) * sy + 'px', borderWidth: `${g * sy}px ${g * sx}px`,
+      });
+    };
+    place();
+    addEventListener('resize', place);
+    document.addEventListener('fullscreenchange', place);
+    setInterval(place, 500);                  // SDL resizes the drawing buffer on its own
+    return el;
+  }
+
   return {
     KEY, IDENTITY, EDGE, ASPECT, defaults, load, save, box, borderPx, pictureRect,
     applyAffine, fitAffine, filterParams, OneEuro, Pipeline,
-    patchCfg, engineValues, install,
+    innerGap, patchCfg, engineValues, gapOverlay, install,
   };
 })();
 

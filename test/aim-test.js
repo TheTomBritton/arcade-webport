@@ -106,6 +106,9 @@ check('smoothing 5 cuts held-still shake by more than half', smoothShake < rawSh
   const p = A.pictureRect(1440, 1080, 4);
   check('picture sits inside the border, 4:3, centred',
     p.border === 43 && p.y === 43 && p.h === 994 && p.w === Math.round(994 * 4 / 3) && p.x === 43 + Math.floor((1354 - p.w) / 2), JSON.stringify(p));
+  const g = A.pictureRect(1440, 1080, 4, undefined, 2);
+  check('a gap pushes the picture in to border + gap, the white stays 4 %',
+    g.border === 43 && g.y === 64 && g.h === 952 && g.w === Math.round(952 * 4 / 3), JSON.stringify(g));
   const n = A.pictureRect(640, 480, 0);
   check('no border: the picture is the whole area', n.x === 0 && n.y === 0 && n.w === 640 && n.h === 480 && n.border === 0);
 }
@@ -118,8 +121,11 @@ check('patchCfg rewrites an existing key', /^gun_border = 4$/m.test(patched) && 
 check('patchCfg appends a missing key', /^crosshair = 0$/m.test(patched));
 check('patchCfg keeps the other lines', patched.startsWith('# my settings\nscale = 2\n') && /volume = 80/.test(patched));
 check('patchCfg on an empty file', A.patchCfg('', { gun_border: 3 }) === 'gun_border = 3\n');
+check('gap is 2 % by default', A.innerGap(4, A.defaults()) === 2);
+check('gap shrinks to keep border + gap within 6 %', A.innerGap(5, A.defaults()) === 1 && A.innerGap(6, A.defaults()) === 0);
+check('no border, no gap', A.innerGap(0, A.defaults()) === 0);
 check('engineValues empty while off', Object.keys(A.engineValues(A.defaults())).length === 0);
-check('engineValues when on', JSON.stringify(A.engineValues(Object.assign(A.defaults(), { enabled: true, borderPct: 3, crosshair: true }))) === '{"gun_border":3,"crosshair":1,"aspect":"stretch","widescreen":0,"window_mode":0,"fullscreen":0}');
+check('engineValues when on', JSON.stringify(A.engineValues(Object.assign(A.defaults(), { enabled: true, borderPct: 3, crosshair: true }))) === '{"gun_border":5,"crosshair":1,"aspect":"stretch","widescreen":0,"window_mode":0,"fullscreen":0,"key_pedal":"Space","key_trigger":"Return"}');
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');
 process.exit(failures ? 1 : 0);

@@ -111,7 +111,17 @@ async function moveAndRead(page, x, y) {
     const cfg = await page.evaluate((cfgName) => {
       try { return (window.__tc || window.__tc2).FS.readFile('/game/' + cfgName, { encoding: 'utf8' }); } catch (e) { return 'ERR ' + e; }
     }, CFG);
-    check('on: border written to the engine settings', /^gun_border = 3$/m.test(cfg), cfg);
+    check('on: border + gap written to the engine settings', /^gun_border = 5$/m.test(cfg), cfg);
+    const gap = await page.evaluate(() => {
+      const g = document.querySelector('.sinden-gap'), c = document.getElementById('canvas');
+      if (!g) return null;
+      const gr = g.getBoundingClientRect(), cr = c.getBoundingClientRect(), s = getComputedStyle(g);
+      return { shown: s.display !== 'none', bw: parseFloat(s.borderTopWidth), inset: gr.top - (cr.top + c.clientTop), cssH: c.clientHeight, bufH: c.height };
+    });
+    // 3 % white, then 2 % black: on a W x H buffer floor(5 %) - floor(3 %) px, scaled to CSS
+    const want = gap && (Math.floor(5 * gap.bufH / 100) - Math.floor(3 * gap.bufH / 100)) * gap.cssH / gap.bufH;
+    check('on: a black gap lies just inside the white border', gap && gap.shown && Math.abs(gap.bw - want) < 1 &&
+      Math.abs(gap.inset - Math.floor(3 * gap.bufH / 100) * gap.cssH / gap.bufH) < 1, JSON.stringify(gap));
     check('on: crosshair written to the engine settings', /^crosshair = 0$/m.test(cfg), cfg);
     check('on: the frame fills the 4:3 canvas (stretch, no widescreen)', /^aspect = stretch$/m.test(cfg) && /^widescreen = 0$/m.test(cfg), cfg);
     // fullscreen: the correction applies (this profile shifts aim right by 5 % of the screen)

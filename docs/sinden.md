@@ -1,8 +1,11 @@
 # Sinden lightgun: in-browser driver plan and notes
 
-**Status 2026-10-12: protocol known, feasibility console built (`web/sinden/`),
-tracking prototype passing synthetic tests. Nothing verified against the real
-gun yet — that needs the hardware plugged in.**
+**Status 2026-10-20: the games are played with the real gun on a Steam Deck
+docked to a 1080p TV, through the native driver path (sindenrs fork as a
+user service + the OS mouse); see the log at the end. The in-browser driver
+(`sinden/gun.js`, `tracker.js`, the feasibility console) is still a
+prototype passing synthetic tests only, and is on hold while the native path
+works.**
 
 Where the current pieces live in this stack:
 
@@ -124,12 +127,15 @@ vision code is MIT Rust and could compile to WASM rather than be rewritten.
 - [x] Confirm how gun input is currently wired: SDL absolute mouse; both game
       tables map left = trigger, right/middle = pedal, key 5 = coin, R held =
       aim off-screen (`timecris/src/tc_game.c`, `tc2/src/tc2_input.c`).
-- [ ] Use absolute pointer position (clientX/clientY), not Pointer Lock / movementX.
-- [ ] Map pointer coordinates to canvas space correctly at any canvas size and scale.
+- [x] Use absolute pointer position (clientX/clientY), not Pointer Lock / movementX
+      (`sinden/aim.js` re-dispatches the gun's events corrected and smoothed).
+- [x] Map pointer coordinates to canvas space correctly at any canvas size and scale
+      (fullscreen: the driver maps the border round the 4:3 box to the whole screen).
 - [x] Block the browser context menu: both game pages now suppress it
       page-wide (the pedal is right click, and the gun drifts off the canvas
       mid-press), not just on the canvas.
-- [ ] Add a fullscreen mode. Test aim accuracy windowed vs fullscreen.
+- [x] Add a fullscreen mode (F11 / the button: a 4:3 wrapper, never the
+      engine's own 16:9 fullscreen). The 9-point calibration is fitted fullscreen.
 
 **Native driver status (Tom's machine):** Sindenrs.app installed and configured
 for these games — `~/.config/sindenrs/config.toml` maps trigger=left click,
@@ -211,3 +217,30 @@ inherited from sindenrs's documented own-hardware reverse engineering.
 - Web Serial API: https://github.com/wicg/serial/
 - Web Serial polyfill (WebUSB): https://github.com/google/web-serial-polyfill
 - Android external USB cameras: https://source.android.com/docs/core/camera/external-usb-cameras
+
+## Steam Deck log (native driver path)
+
+The Deck runs the user's `sindenrs` fork as a user service (`sindenrs.service`,
+not enabled: `systemctl --user start sindenrs.service` before playing). The gun
+is an ordinary absolute mouse to Chrome; the pages do the rest.
+
+- **2026-10-12** — PR #1: `sinden/aim.js` (affine correction fitted from a
+  9-point calibration + One Euro smoothing, cursor hidden, context menu
+  blocked) and the `/calibrate/` suite. PR #2: every game fullscreen at its
+  original 4:3 with the gun border round the 4:3 box; the driver runs with
+  `aspect = 1.3333` and its overlay off (the games draw the border).
+- **2026-10-14** — PR #3: cache-busting (`aim.js?v=N`, bump on every change;
+  `sinden/.htaccess`), the Time Crisis frame made to fill the 4:3 canvas
+  (`aspect = stretch`), calibration sounds + a shooting gallery. PR #4: the
+  pages fullscreen a wrapper so SDL cannot resize the canvas to 16:9;
+  `sinden/deploy.sh` uploads the lot. PR #5 (open): a black 2 % gap inside the
+  white border — TC2's bright scenery merged with the border and the aim froze
+  ("clipped" in the driver log).
+- **2026-10-20** — played the live site with the gun: works. PR #6 (open,
+  stacked on #5): Space = the pedal for a gun without one (Time Crisis: the
+  page binds `key_pedal = Space`, `key_trigger = Return` in the engine cfg;
+  HotD2: Space is a complete off-screen reload shot). Verified headless on the
+  Deck: engine Controls page, `test/aim-browser-test.js` for both TC games,
+  and HotD2's input block.
+- Next: merge #5 and #6 and deploy; the Decky plugin (`decky-sinden`) to start
+  the driver from Game Mode is untested on the device.
