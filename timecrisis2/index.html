@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Time Crisis II (browser port)</title>
-<meta name="robots" content="noai, noimageai">
 <style>
   html{background:#111;color:#eee}
   body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:inherit;color:inherit}
@@ -77,17 +76,9 @@
   .machine button:disabled { background: var(--deep); border-color: var(--edge); color: #3d6b3d; cursor: default; }
   input[type=file] { display: none; }
   #gamebox { display: none; }
-  #canvas { background: #000; width: 100%; aspect-ratio: 4 / 3;
-            border: 1px solid var(--edge); border-radius: 4px; display: block;
-            margin: 0 auto; image-rendering: auto; box-sizing: border-box; }
-  #canvas:fullscreen { border-radius: 0; border: 0; }
-  /* Fullscreen is the wrapper, not the canvas: a fullscreen canvas is resized by SDL to
-     the whole 16:9 screen. In the wrapper the canvas stays 4:3, centred, black either side. */
-  #screen:fullscreen { background: #000; display: flex; align-items: center; justify-content: center; }
-  #screen:fullscreen #canvas { width: auto; height: 100%; max-width: 100%; border: 0; border-radius: 0; }
-  .bar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
-  .bar button, .bar .btn { margin: 0; }
-  #status { color: var(--dim); font-size: 13px; margin-top: 8px; min-height: 18px; }
+  /* the screen (a 4:3 box the page fullscreens, with the light gun's frame round the canvas)
+     and the control panel under it are styled by ../lib/cabinet.js */
+  #status { color: var(--dim); font-size: 13px; margin-top: 10px; min-height: 18px; }
 
   /* ── Controls: their own contained section below the machine ── */
   .controls-panel {
@@ -130,24 +121,26 @@
 
         <section id="gamebox">
           <div id="screen"><canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas></div>
-          <div class="bar">
-            <button id="start">Insert coin &amp; start</button>
-            <button class="secondary" id="fullscreen">Fullscreen</button>
-            <a class="btn secondary" href="../calibrate/">Calibrate light gun</a>
-          </div>
+          <div id="cabinet" aria-label="Cabinet controls"></div>
           <div id="status"></div>
         </section>
       </div>
 
       <section class="controls-panel">
-        <h2>Controls</h2>
+        <h2>Controls (keys)</h2>
         <dl class="controls">
           <div><dt>Aim</dt><dd>mouse / light gun</dd></div>
           <div><dt>Shoot</dt><dd>left click / trigger</dd></div>
           <div><dt>Pedal (cover)</dt><dd>right click / Space</dd></div>
           <div><dt>Coin</dt><dd>5</dd></div>
-          <div><dt>White border (Sinden)</dt><dd>F8</dd></div>
+          <div><dt>Start (the trigger)</dt><dd>Enter</dd></div>
           <div><dt>Menu</dt><dd>Esc</dd></div>
+          <div><dt>Test / Service</dt><dd>F2 / 9</dd></div>
+          <div><dt>Operator menu up / down / enter</dt><dd>PgUp / PgDn / Home</dd></div>
+          <div><dt>Shot flash / mouse speed</dt><dd>F6 / F7</dd></div>
+          <div><dt>Light-gun border (Sinden)</dt><dd>F8</dd></div>
+          <div><dt>CRT look / picture brightness</dt><dd>F9</dd></div>
+          <div><dt>Fullscreen</dt><dd>F11</dd></div>
         </dl>
       </section>
 
@@ -165,15 +158,45 @@
   };
 }
 </script>
-<script src="../sinden/aim.js?v=5"></script>
+<script src="../sinden/aim.js?v=7"></script>
+<script src="../sinden/crt.js?v=3"></script>
+<script src="../lib/cabinet.js?v=1"></script>
 <script>
 'use strict';
 (async () => {
   const $ = id => document.getElementById(id);
-  /* light gun: the calibration suite's correction + smoothing, cursor hidden in fullscreen */
+  const screen = $('screen'), canvas = $('canvas');
+  const say = t => { $('status').textContent = t || ''; };
+  /* light gun: the calibration suite's correction + smoothing, cursor hidden in fullscreen; its
+     frame (white border + black gap) is the page's, round the canvas - F8 and the panel cycle it */
   const gunProfile = SindenAim.load();
-  SindenAim.install($('canvas'), gunProfile);
-  SindenAim.gapOverlay($('canvas'), gunProfile);   // black between the gun border and the picture
+  const frame = Cabinet.frame(screen, canvas, gunProfile);
+  SindenAim.install(canvas, gunProfile, { frame: frame.element });
+  /* CRT look (F9), over the canvas only: the frame stays above it. Hidden until the game draws. */
+  const crt = SindenCrt.install(canvas, gunProfile, null, { deferred: true, status: say, onChange: () => panel.refresh() });
+  /* the control panel: every key the machine reads is a button too */
+  const tap = code => { canvas.focus({ preventScroll: true }); return Cabinet.tapKey(canvas, code); };
+  const cycleBorder = () => { frame.cycle(); say(frame.get() ? `Light-gun border ${frame.get()} %` : 'Light-gun border off'); panel.refresh(); };
+  const panel = Cabinet.panel($('cabinet'), { groups: [
+    { label: 'Power', rows: [[{ id: 'start', kind: 'power', label: 'Power on', title: 'Switch the machine on' }]] },
+    { label: 'Coin', rows: [[{ id: 'coin', kind: 'coin', label: 'Insert coin', key: '5', disabled: true, onClick: () => tap('Digit5') }]] },
+    { label: 'Player', rows: [[{ id: 'p1start', kind: 'round', colour: 'red', label: 'Start', key: 'Enter', title: 'The trigger starts the game', disabled: true, onClick: () => tap('Enter') }]] },
+    { label: 'Service', rows: [[
+      { id: 'menu', kind: 'round', colour: 'white', small: true, label: 'Menu', key: 'Esc', disabled: true, onClick: () => tap('Escape') },
+      { id: 'test', kind: 'round', colour: 'yellow', small: true, label: 'Test', key: 'F2', disabled: true, onClick: () => tap('F2') },
+      { id: 'service', kind: 'round', colour: 'blue', small: true, label: 'Service', key: '9', disabled: true, onClick: () => tap('Digit9') }], [
+      { id: 'opup', kind: 'key', narrow: true, label: 'Op \u25b2', key: 'PgUp', title: 'Operator menu: up', disabled: true, onClick: () => tap('PageUp') },
+      { id: 'opdown', kind: 'key', narrow: true, label: 'Op \u25bc', key: 'PgDn', title: 'Operator menu: down', disabled: true, onClick: () => tap('PageDown') },
+      { id: 'openter', kind: 'key', narrow: true, label: 'Op \u25cf', key: 'Home', title: 'Operator menu: enter', disabled: true, onClick: () => tap('Home') }]] },
+    { label: 'Display', rows: [[
+      { id: 'border', kind: 'key', label: 'Gun border', key: 'F8', readout: () => frame.text(), onClick: cycleBorder },
+      { id: 'crt', kind: 'key', label: 'CRT', key: 'F9', readout: () => (crt ? crt.text() : 'OFF'), onClick: () => crt && crt.cycle() },
+      { id: 'fullscreen', kind: 'key', label: 'Fullscreen', key: 'F11', onClick: () => Cabinet.fullscreen(screen) }], [
+      { id: 'flash', kind: 'key', narrow: true, label: 'Shot flash', key: 'F6', title: 'The shot flash: 100, 75, 50, 25 %, off', disabled: true, onClick: () => tap('F6') },
+      { id: 'mousespeed', kind: 'key', narrow: true, label: 'Mouse speed', key: 'F7', title: 'The mouse speed: direct, 125, 150, 200, 300 %', disabled: true, onClick: () => tap('F7') }]] },
+    { label: 'Light gun', rows: [[{ id: 'calibrate', kind: 'link', label: 'Calibrate', href: '../calibrate/' }]] },
+  ] });
+  const powered = () => { panel.item('start').lit(true); panel.enable(['coin', 'p1start', 'menu', 'test', 'service', 'opup', 'opdown', 'openter', 'flash', 'mousespeed']); if (crt) crt.start(); };
   const GAME = 'timecrs2';
   const ZIP_KEY = 'timecrs2.zip';
   /* files the game saves in its working directory, persisted across visits */
@@ -261,7 +284,7 @@
 
   /* ---- boot ---- */
   if (typeof WebAssembly.Suspending === 'undefined')
-    $('status').textContent = 'This browser has no JSPI — use Chrome or Edge 137+.';
+    say('This browser has no JSPI — use Chrome or Edge 137+.');
   let booted = false;
   $('start').addEventListener('click', async () => {
     if (booted) return;
@@ -307,14 +330,15 @@
         } catch (_) {}                                 /* blank RAM still works: it just asks for 4 coins */
       }
       FS.chdir('/game');
-      /* the calibration suite's border size + crosshair choice (engine reads them at start) */
-      const gunCfg = SindenAim.engineValues(gunProfile);
-      if (Object.keys(gunCfg).length)
-        for (const name of ['tc2.cfg']) {
-          let text = '';
-          try { text = FS.readFile('/game/' + name, { encoding: 'utf8' }); } catch (_) {}
-          FS.writeFile('/game/' + name, SindenAim.patchCfg(text, gunCfg));
-        }
+      /* the page draws the light gun's frame and owns fullscreen, so the engine does neither (a
+         saved F8 or menu choice would inset its picture inside our frame); the calibration suite's
+         crosshair + key choices when its profile is on (the engine reads them at start) */
+      const cfgValues = Object.assign({ gun_border: 0, window_mode: 0, fullscreen: 0 }, SindenAim.engineValues(gunProfile));
+      for (const name of ['tc2.cfg']) {
+        let text = '';
+        try { text = FS.readFile('/game/' + name, { encoding: 'utf8' }); } catch (_) {}
+        FS.writeFile('/game/' + name, SindenAim.patchCfg(text, cfgValues));
+      }
 
       /* persist the cabinet's backup RAM + settings every few seconds and on leave */
       const persist = async () => {
@@ -327,28 +351,29 @@
       setInterval(persist, 5000);
       addEventListener('pagehide', persist);
 
-      $('status').textContent = '';
-      $('canvas').focus();
+      say('');
+      powered();
+      canvas.focus();
       window.__tc2 = module;                 /* debug access to the module + FS */
       const extra = new URLSearchParams(location.search).get('args');
       module.callMain(extra ? extra.split(',') : ['--window', '1']);
     } catch (e) {
-      $('status').textContent = 'Boot failed: ' + (e && e.message ? e.message : String(e)) + ' (see console)';
+      say('Boot failed: ' + (e && e.message ? e.message : String(e)) + ' (see console)');
       console.error('boot error:', e, e && e.errno, e && e.stack);
       $('start').disabled = false;
       booted = false;
     }
   });
 
-  $('fullscreen').addEventListener('click', () => $('screen').requestFullscreen());
-  /* F11 is the engine's own fullscreen, which stretches the canvas to the whole screen:
-     take it first and toggle the page's 4:3 fullscreen instead */
+  /* F11 is the engine's own fullscreen (which stretches the canvas to the whole screen) and F8
+     its own border (drawn inside the picture): both are the page's here, taken before SDL sees them */
   addEventListener('keydown', e => {
-    if (e.code !== 'F11') return;
+    if (e.code !== 'F11' && e.code !== 'F8') return;
     e.preventDefault(); e.stopImmediatePropagation();
-    if (!e.repeat) document.fullscreenElement ? document.exitFullscreen() : $('screen').requestFullscreen();
+    if (e.repeat) return;
+    if (e.code === 'F11') Cabinet.fullscreen(screen); else cycleBorder();
   }, true);
-  addEventListener('keyup', e => { if (e.code === 'F11') { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+  addEventListener('keyup', e => { if (e.code === 'F11' || e.code === 'F8') { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
 })();
 </script>
 </body>

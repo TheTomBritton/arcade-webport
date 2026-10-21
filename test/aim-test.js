@@ -125,7 +125,7 @@ check('gap is 2 % by default', A.innerGap(4, A.defaults()) === 2);
 check('gap shrinks to keep border + gap within 6 %', A.innerGap(5, A.defaults()) === 1 && A.innerGap(6, A.defaults()) === 0);
 check('no border, no gap', A.innerGap(0, A.defaults()) === 0);
 check('engineValues empty while off', Object.keys(A.engineValues(A.defaults())).length === 0);
-check('engineValues when on', JSON.stringify(A.engineValues(Object.assign(A.defaults(), { enabled: true, borderPct: 3, crosshair: true }))) === '{"gun_border":5,"crosshair":1,"aspect":"stretch","widescreen":0,"window_mode":0,"fullscreen":0,"key_pedal":"Space","key_trigger":"Return"}');
+check('engineValues when on (no engine border: the page draws the frame)', JSON.stringify(A.engineValues(Object.assign(A.defaults(), { enabled: true, borderPct: 3, crosshair: true }))) === '{"gun_border":0,"crosshair":1,"aspect":"stretch","widescreen":0,"window_mode":0,"fullscreen":0,"key_pedal":"Space","key_trigger":"Return"}');
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');
 process.exit(failures ? 1 : 0);

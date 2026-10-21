@@ -25,7 +25,14 @@
 // the context menu, which the gun's right-click pedal would otherwise open.
 //
 // The same profile tells the game page what to write into the engine's config
-// before boot (border size, crosshair), so the game and the suite agree.
+// before boot (crosshair, keys), and sizes the light gun's frame the page draws
+// round the canvas (lib/cabinet.js), so the game and the suite agree.
+//
+// v7: the border is the page's (Cabinet.frame), not the engine's: install() takes
+// { frame } - the element whose rectangle the gun's fraction maps to fullscreen
+// (the frame's outer edge, which the driver maps to the whole screen) - and
+// engineValues asks the engines for no border of their own. gapOverlay is gone
+// with it.
 'use strict';
 
 const SindenAim = (() => {
@@ -45,6 +52,7 @@ const SindenAim = (() => {
       gapPct: 2,                 // a black gap inside the white border, % of the short edge (see innerGap)
       crosshair: false,          // the engine's aiming cross
       hideCursor: true,
+      crt: { enabled: false, brightness: 100, scanlines: 50, mask: 20, blur: 50 },   // sinden/crt.js; F9 in the games
       calibratedAt: null,
       stats: null,               // what the last calibration measured, for display
     };
@@ -157,7 +165,7 @@ const SindenAim = (() => {
   // border's outer edge to the whole screen, so a position the gun reports as a
   // fraction of the screen is that fraction of the box, which is exactly how the
   // games read a fullscreen canvas (by its full element rect). The picture sits
-  // inside the border, as the Time Crisis engine draws it.
+  // inside the border and its gap, filling the box they leave (lib/cabinet.js).
 
   // The 4:3 box centred in a W x H screen.
   function box(W, H, aspect = ASPECT) {
@@ -227,8 +235,8 @@ const SindenAim = (() => {
   function engineValues(profile) {
     if (!profile.enabled) return {};
     return {
-      // the engine draws border + gap in white; gapOverlay paints the gap black
-      gun_border: Math.round(profile.borderPct) + innerGap(profile.borderPct, profile), crosshair: profile.crosshair ? 1 : 0,
+      // the page draws border + gap round the canvas (lib/cabinet.js): the engine draws none
+      gun_border: 0, crosshair: profile.crosshair ? 1 : 0,
       aspect: 'stretch', widescreen: 0,
       window_mode: 0, fullscreen: 0,     // the page's fullscreen, never the engine's (that one is 16:9)
       key_pedal: 'Space', key_trigger: 'Return',
@@ -250,7 +258,12 @@ const SindenAim = (() => {
 
   // Route the canvas's mouse events through the profile. Install BEFORE the
   // engine boots so this capture listener runs ahead of SDL's.
-  function install(canvas, profile = load()) {
+  //
+  // opts.frame: the element the gun's fraction maps to while fullscreen - the light
+  // gun's frame round the canvas (Cabinet.frame), whose outer edge the driver maps
+  // to the whole screen. Without it, the canvas itself.
+  function install(canvas, profile = load(), opts = {}) {
+    const frameEl = () => (opts.frame && opts.frame.isConnected ? opts.frame : canvas);
     const style = document.createElement('style');
     style.textContent =
       '#' + canvas.id + ':fullscreen, :fullscreen:has(#' + canvas.id + '), :fullscreen #' + canvas.id + ' { cursor: none !important; }' +
@@ -278,9 +291,9 @@ const SindenAim = (() => {
       const repeat = lastIn && lastIn[0] === e.clientX && lastIn[1] === e.clientY && Math.abs(e.timeStamp - lastIn[2]) < 20;
       if ((move && !repeat) || !last) {
         const [x, y] = pipe.push(e.clientX / vw, e.clientY / vh, e.timeStamp, full);
-        // the driver maps the border (round the canvas's 4:3 picture) to the whole screen,
-        // so fullscreen the fraction is a fraction of the canvas; windowed, of the viewport
-        const r = full ? canvas.getBoundingClientRect() : { left: 0, top: 0, width: vw, height: vh };
+        // the driver maps the border's outer edge (the frame round the canvas) to the whole
+        // screen, so fullscreen the fraction is a fraction of the frame; windowed, of the viewport
+        const r = full ? frameEl().getBoundingClientRect() : { left: 0, top: 0, width: vw, height: vh };
         cx = r.left + x * r.width; cy = r.top + y * r.height;
         last = [cx, cy];
         lastIn = [e.clientX, e.clientY, e.timeStamp];
@@ -326,40 +339,10 @@ const SindenAim = (() => {
     return { profile, pipe };
   }
 
-  // The Time Crisis engines draw only white: they are given gun_border = border + gap
-  // (engineValues) and this paints the inner gap of that band black, over the canvas.
-  function gapOverlay(canvas, profile = load()) {
-    const pct = Math.round(profile.borderPct), gap = innerGap(pct, profile);
-    if (!profile.enabled || !gap) return null;
-    const host = canvas.parentElement;
-    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
-    const el = document.createElement('div');
-    el.className = 'sinden-gap';
-    el.style.cssText = 'position:absolute;pointer-events:none;box-sizing:border-box;border:0 solid #000;display:none';
-    canvas.after(el);
-    const place = () => {
-      const W = canvas.width, H = canvas.height, cw = canvas.clientWidth, ch = canvas.clientHeight;
-      if (!W || !H || !cw || !ch) { el.style.display = 'none'; return; }
-      const b = borderPx(W, H, pct), g = borderPx(W, H, pct + gap) - b, sx = cw / W, sy = ch / H;
-      const cr = canvas.getBoundingClientRect(), hr = host.getBoundingClientRect();
-      const left = cr.left - hr.left - host.clientLeft + canvas.clientLeft;
-      const top = cr.top - hr.top - host.clientTop + canvas.clientTop;
-      Object.assign(el.style, {
-        display: 'block', left: left + b * sx + 'px', top: top + b * sy + 'px',
-        width: (W - 2 * b) * sx + 'px', height: (H - 2 * b) * sy + 'px', borderWidth: `${g * sy}px ${g * sx}px`,
-      });
-    };
-    place();
-    addEventListener('resize', place);
-    document.addEventListener('fullscreenchange', place);
-    setInterval(place, 500);                  // SDL resizes the drawing buffer on its own
-    return el;
-  }
-
   return {
     KEY, IDENTITY, EDGE, ASPECT, defaults, load, save, box, borderPx, pictureRect,
     applyAffine, fitAffine, filterParams, OneEuro, Pipeline,
-    innerGap, patchCfg, engineValues, gapOverlay, install,
+    innerGap, patchCfg, engineValues, install,
   };
 })();
 

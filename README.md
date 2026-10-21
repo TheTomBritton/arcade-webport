@@ -34,15 +34,28 @@ The engines suspend with **JSPI**, so they need Chrome/Edge 137+ for now.
 [yunophilia/hotd2-recompiled](https://github.com/yunophilia/hotd2-recompiled),
 which has no license yet.*
 
+## The cabinet
+
+- `lib/cabinet.js` — what every page shares around its engine: the light gun's
+  frame (a white border and a black gap, drawn by the page round the engine's
+  canvas, so no engine insets or clips its own picture; F8 and a panel button
+  cycle it 0–6 %), a skeuomorphic control panel (power, coin, start, the
+  service switches, border / CRT / fullscreen, calibrate — every function the
+  keys reach is a button too) and a key tap for the SDL engines.
+- `sinden/crt.js` — a CRT look over the canvas (scanlines, mask, softness,
+  dimmer picture; F9 cycles off / 100 / 85 / 70 / 55 %), saved in the
+  calibration profile.
+
 ## Sinden light gun
 
 - `sinden/aim.js` — page-level aim layer: linear correction + One Euro
   smoothing, dispatched to the engine's own mouse handlers, plus the 4:3
-  picture-box geometry (`box` / `borderPx` / `pictureRect`) used to draw the
-  Sinden's white border round the game picture rather than the whole screen.
+  picture-box geometry (`box` / `borderPx` / `pictureRect`) the frame and the
+  calibration suite share. Fullscreen the gun's fraction maps to the frame's
+  outer edge, which is what the Sinden driver maps to the whole screen.
 - `calibrate/` — browser calibration suite: shoot targets, get a correction
-  profile (localStorage); the game pages read it at boot and patch the
-  engine's border/crosshair settings to match.
+  profile (localStorage); the game pages read it at boot (border size, CRT
+  choice) and patch the engine's crosshair / key settings to match.
 - `sinden/index.html` + `gun.js` + `tracker.js` — an experimental in-browser
   driver: Web Serial to the gun's control port, camera tracking of the border
   quad with a homography. Clean-room, protocol per
