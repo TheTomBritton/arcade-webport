@@ -242,5 +242,16 @@ is an ordinary absolute mouse to Chrome; the pages do the rest.
   HotD2: Space is a complete off-screen reload shot). Verified headless on the
   Deck: engine Controls page, `test/aim-browser-test.js` for both TC games,
   and HotD2's input block.
-- Next: merge #5 and #6 and deploy; the Decky plugin (`decky-sinden`) to start
-  the driver from Game Mode is untested on the device.
+- **2026-10-20, later** — #5 and #7 (#6 reopened against main) merged and
+  deployed. The driver froze the aim for 14 minutes: its corrupt-frame test
+  rejected any MJPEG frame under 60 % of the median of recent *accepted*
+  frames, and legitimate frames range 7–58 KB, so it locked out for good.
+  Fixed in the sindenrs fork (end-of-image marker + V4L2 error flag instead;
+  commit 7402be7 on `steamos`); lens k1 refitted to -0.2102 from a recorded
+  minute of play. PR #8: a CRT look (`sinden/crt.js`, F9: off / 100 / 85 /
+  70 / 55 % picture brightness) drawn over the canvas with the border passed
+  through, so a dimmer picture gives the camera more contrast, not less;
+  HotD2 now fullscreens a wrapper like the TC pages.
+- Next: the Decky plugin (`decky-sinden`) to start the driver from Game Mode
+  is untested on the device. Aim at the bottom/edges: a homography fit from
+  the 9 calibration points would absorb screen tilt (aim.js fits an affine).

@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Lost World: Jurassic Park (browser port)</title>
+<style>
+  html{background:#111;color:#eee}
+  body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:inherit;color:inherit}
+</style>
+<style>
+  /* The page must be served statically (the engine tolerates no CSP). */
+  .arcade-wrap {
+    --panel: #041004;
+    --deep: #030c03;
+    --edge: #1c3a1c;
+    --edge-lit: #2c552c;
+    --ctext: #b8f0a8;
+    --dim: #4f8f4f;
+    --bright: #eaffe0;
+    --ok: #5fdf5f;
+    --bad: #e2a23d;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    max-width: 770px;
+    margin: 0 auto;
+    padding: 24px 0 40px;
+  }
+  /* ── The machine: one contained codec screen (title, loader, game) ── */
+  .machine {
+    background: var(--panel); border: 2px solid var(--edge); border-radius: 4px;
+    padding: 18px 16px; text-align: center;
+    font-family: var(--mono); color: var(--ctext); font-size: 15px; line-height: 1.55;
+  }
+  .machine h1 { margin: 2px 0 10px; }
+  .machine h1 span { /* until the clear-logo art lands: a typographic title */
+    display: block; line-height: 1.1;
+    font-size: clamp(20px, 4.5vw, 30px); font-weight: 700; letter-spacing: .08em;
+    color: var(--bright); text-shadow: 0 0 18px rgba(95, 223, 95, .35);
+  }
+  #loadline {
+    display: none;
+    max-width: 640px; margin: 10px auto;
+    border: 1px solid var(--edge); border-radius: 4px; background: var(--deep);
+    padding: 12px 16px;
+    font-size: 12px; letter-spacing: .15em; color: var(--ctext); text-align: left;
+  }
+  #loadline .cursor {
+    display: inline-block; width: 0.55em; height: 1em; margin-left: 4px;
+    background: #8fcf8f; vertical-align: text-bottom;
+    animation: load-blink 1s infinite steps(1);
+  }
+  @keyframes load-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #loadline .cursor { animation: none; } }
+  .machine .panel {
+    background: var(--deep); border: 1px solid var(--edge); border-radius: 4px;
+    padding: 16px 18px; margin: 10px auto; max-width: 640px; text-align: left;
+  }
+  .machine .panel h2 {
+    margin: 0 0 8px; font-size: 0.75rem; letter-spacing: 0.25em;
+    text-transform: uppercase; color: var(--dim); font-weight: 600;
+    border-bottom: 1px solid var(--edge); padding-bottom: 8px;
+  }
+  .machine .panel p { color: var(--ctext); margin: 6px 0; font-size: 13px; }
+  .machine .panel p b { color: var(--bright); }
+  .machine button, .machine .btn, .machine label.filebtn {
+    display: inline-block; background: #14381c; color: var(--ctext);
+    border: 1px solid var(--edge-lit);
+    padding: 9px 20px; border-radius: 4px; font: 600 13px var(--mono);
+    letter-spacing: .05em; cursor: pointer; margin: 8px 8px 0 0;
+    text-decoration: none;
+    transition: background .3s ease, color .3s ease;
+  }
+  .machine button:hover, .machine .btn:hover, .machine label.filebtn:hover { background: #1c4a26; color: var(--bright); }
+  .machine button.secondary, .machine .btn.secondary, .machine label.filebtn.secondary { background: var(--deep); border-color: var(--edge); color: var(--dim); }
+  .machine button.secondary:hover, .machine .btn.secondary:hover { color: var(--ctext); }
+  .machine button:disabled { background: var(--deep); border-color: var(--edge); color: #3d6b3d; cursor: default; }
+  input[type=file] { display: none; }
+  #gamebox { display: none; }
+  /* the screen (a 4:3 box the page fullscreens, with the light gun's frame round the canvas)
+     and the control panel under it are styled by ../lib/cabinet.js */
+  #status { color: var(--dim); font-size: 13px; margin-top: 10px; min-height: 18px; }
+
+  /* ── Controls: their own contained section below the machine ── */
+  .controls-panel {
+    background: var(--panel); border: 2px solid var(--edge); border-radius: 4px;
+    padding: 16px 18px; margin: 16px 0 0;
+    font-family: var(--mono);
+  }
+  .controls-panel h2 {
+    margin: 0 0 10px; font-size: 0.75rem; letter-spacing: 0.25em;
+    text-transform: uppercase; color: var(--dim); font-weight: 600;
+    border-bottom: 1px solid var(--edge); padding-bottom: 8px;
+  }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px 24px; margin: 0; }
+  .controls div {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    font-size: 12.5px; padding: 5px 0; border-bottom: 1px dotted rgba(79, 143, 79, 0.35);
+  }
+  .controls dt { color: var(--bright); font-weight: 600; }
+  .controls dd { margin: 0; color: var(--dim); text-align: right; }
+
+  .smallprint { margin: 14px 2px 0; font-size: 11px; color: #888; text-align: center; }
+</style>
+</head>
+<body oncontextmenu="event.preventDefault()"><!-- page-wide: a lightgun's off-screen shot is right click, and the gun can drift off the canvas mid-press -->
+  <main id="main-content">
+    <div class="arcade-wrap">
+      <div class="machine">
+        <h1><span>THE LOST WORLD: JURASSIC PARK</span></h1>
+        <div id="loadline">ESTABLISHING LINK &mdash; DOWNLOADING GAME DATA<span class="cursor" aria-hidden="true"></span></div>
+        <!-- fallback only: shown when nothing is stored AND the hosted download fails -->
+        <section class="panel" id="rompanel" style="display:none">
+          <h2>Game files</h2>
+          <p>The hosted download didn&rsquo;t come through. Feed the machine your own copy of the MAME
+             ROM set <b>lostwsga.zip</b> (The Lost World: Jurassic Park, Model 3 Step 1.5) &mdash; every chip is
+             checked by name and size and kept in your browser only, nothing is uploaded.</p>
+          <label class="filebtn">Choose lostwsga.zip<input type="file" id="romfile" accept=".zip"></label>
+          <button class="secondary" id="forget" style="display:none">Forget stored ROMs</button>
+          <div id="romnote" style="display:none; font-size:12px; margin-top:8px"></div>
+        </section>
+
+        <section id="gamebox">
+          <div id="screen"><canvas id="canvas" width="496" height="384" tabindex="0" oncontextmenu="event.preventDefault()"></canvas></div>
+          <div id="cabinet" aria-label="Cabinet controls"></div>
+          <div id="status"></div>
+        </section>
+      </div>
+
+      <section class="controls-panel">
+        <h2>Controls (keys)</h2>
+        <dl class="controls">
+          <div><dt>Aim</dt><dd>mouse / light gun</dd></div>
+          <div><dt>Shoot</dt><dd>left click / trigger / Ctrl</dd></div>
+          <div><dt>Reload (off-screen shot)</dt><dd>right click / Space</dd></div>
+          <div><dt>Coin</dt><dd>5 / middle click</dd></div>
+          <div><dt>Start</dt><dd>1</dd></div>
+          <div><dt>Service / Test</dt><dd>9 / F2</dd></div>
+          <div><dt>Sound on / off</dt><dd>M</dd></div>
+          <div><dt>Run flat out (hold)</dt><dd>Tab</dd></div>
+          <div><dt>Light-gun border (Sinden)</dt><dd>F8</dd></div>
+          <div><dt>CRT look / picture brightness</dt><dd>F9</dd></div>
+          <div><dt>Fullscreen</dt><dd>F11</dd></div>
+        </dl>
+      </section>
+
+      <p class="smallprint">Game code &amp; assets &copy; Sega. Static recompilation on
+        <a href="https://github.com/sp00nznet/model3recomp">model3recomp</a> &copy; its contributors (MIT),
+        hardware model from MAME (BSD-3-Clause); sound board: 68000 by
+        <a href="https://github.com/kstenerud/Musashi">Musashi</a> (MIT), SCSP ported from MAME.</p>
+    </div>
+  </main>
+<script src="../lib/fflate.js"></script>
+<script src="../sinden/aim.js?v=7"></script>
+<script src="../sinden/crt.js?v=3"></script>
+<script src="../lib/cabinet.js?v=1"></script>
+<script>
+'use strict';
+(async () => {
+  const $ = id => document.getElementById(id);
+  const screen = $('screen'), canvas = $('canvas');
+  const say = t => { $('status').textContent = t || ''; };
+  /* light gun: the calibration suite's correction + smoothing, cursor hidden in fullscreen; its
+     frame (white border + black gap) is the page's, round the canvas - F8 and the panel cycle it */
+  const gunProfile = SindenAim.load();
+  const frame = Cabinet.frame(screen, canvas, gunProfile);
+  SindenAim.install(canvas, gunProfile, { frame: frame.element });
+  /* CRT look (F9), over the canvas only: the frame stays above it. Hidden until the game draws. */
+  const crt = SindenCrt.install(canvas, gunProfile, null, { deferred: true, status: say, onChange: () => panel.refresh() });
+  /* the control panel: every key the board reads is a button too */
+  const tap = code => { canvas.focus({ preventScroll: true }); return Cabinet.tapKey(canvas, code); };
+  const cycleBorder = () => { frame.cycle(); say(frame.get() ? `Light-gun border ${frame.get()} %` : 'Light-gun border off'); panel.refresh(); };
+  let muted = false;
+  const toggleMute = () => { muted = !muted; if (module) module._web_mute(muted ? 1 : 0); say(muted ? 'sound off' : 'sound on'); panel.refresh(); };
+  const panel = Cabinet.panel($('cabinet'), { groups: [
+    { label: 'Power', rows: [[{ id: 'start', kind: 'power', label: 'Power on', title: 'Switch the machine on' }]] },
+    { label: 'Coin', rows: [[{ id: 'coin', kind: 'coin', label: 'Insert coin', key: '5', disabled: true, onClick: () => tap('Digit5') }]] },
+    { label: 'Player', rows: [[{ id: 'p1start', kind: 'round', colour: 'red', label: 'Start', key: '1', disabled: true, onClick: () => tap('Digit1') }]] },
+    { label: 'Service', rows: [[
+      { id: 'test', kind: 'round', colour: 'yellow', small: true, label: 'Test', key: 'F2', disabled: true, onClick: () => tap('F2') },
+      { id: 'service', kind: 'round', colour: 'blue', small: true, label: 'Service', key: '9', disabled: true, onClick: () => tap('Digit9') }]] },
+    { label: 'Display', rows: [[
+      { id: 'border', kind: 'key', label: 'Gun border', key: 'F8', readout: () => frame.text(), onClick: cycleBorder },
+      { id: 'crt', kind: 'key', label: 'CRT', key: 'F9', readout: () => (crt ? crt.text() : 'OFF'), onClick: () => crt && crt.cycle() },
+      { id: 'sound', kind: 'key', label: 'Sound', key: 'M', readout: () => (muted ? 'OFF' : 'ON'), onClick: toggleMute },
+      { id: 'fullscreen', kind: 'key', label: 'Fullscreen', key: 'F11', onClick: () => Cabinet.fullscreen(screen) }]] },
+    { label: 'Light gun', rows: [[{ id: 'calibrate', kind: 'link', label: 'Calibrate', href: '../calibrate/' }]] },
+  ] });
+  const powered = () => { panel.item('start').lit(true); panel.enable(['coin', 'p1start', 'test', 'service']); };
+  const GAME = 'lostworld';
+  const ZIP_KEY = 'lostwsga.zip';
+
+  /* ---- the set's layout, as model3recomp's tools/rom_loader.py proves it against the PowerPC
+   * exception vectors and tools/build_roms.py writes it. The program and the banked CROM are four
+   * chips interleaved two bytes at a time, byte-swapped; the VROM sixteen; the sound board's two
+   * images are plain byte-swapped runs. Which chip sits in which lane is not the order their
+   * numbers come in - see rom_loader.py for why the obvious reading is the wrong one. ---- */
+  const W = 496, H = 384;
+  const LAYOUT = {
+    prog:    { lanes: ['epr-19936a.20', 'epr-19937a.19', 'epr-19938a.18', 'epr-19939a.17'], size: 0x80000 },
+    bank:    { groups: [['mpr-19921.4', 'mpr-19920.3', 'mpr-19919.2', 'mpr-19918.1'],
+                        ['mpr-19925.8', 'mpr-19924.7', 'mpr-19923.6', 'mpr-19922.5'],
+                        ['mpr-19929.12', 'mpr-19928.11', 'mpr-19927.10', 'mpr-19926.9'],
+                        ['mpr-19933.16', 'mpr-19932.15', 'mpr-19931.14', 'mpr-19930.13']], size: 0x400000 },
+    vrom:    { lanes: ['mpr-19903.27', 'mpr-19902.26', 'mpr-19905.29', 'mpr-19904.28',
+                       'mpr-19907.31', 'mpr-19906.30', 'mpr-19909.33', 'mpr-19908.32',
+                       'mpr-19911.35', 'mpr-19910.34', 'mpr-19913.37', 'mpr-19912.36',
+                       'mpr-19915.39', 'mpr-19914.38', 'mpr-19917.41', 'mpr-19916.40'], size: 0x200000 },
+    snd:     { swap: ['epr-19940.21'], size: 0x80000 },
+    samples: { swap: ['mpr-19934.22', 'mpr-19935.24'], size: 0x400000 },
+  };
+  /* a chip's part number, which survives MAME's renamings and the revision letter */
+  const partOf = name => name.toLowerCase().split('/').pop().replace(/\.[^.]*$/, '').replace(/^(epr|mpr|opr|ep|mp|op)[-_]?/, '').replace(/[^a-z0-9]/g, '');
+  function buildImages(zipBytes) {
+    const members = fflate.unzipSync(zipBytes);
+    const byPart = new Map();
+    for (const name of Object.keys(members)) {
+      const p = partOf(name);
+      if (!byPart.has(p)) byPart.set(p, name);
+      if (/[a-z]$/.test(p) && !byPart.has(p.slice(0, -1) + '*')) byPart.set(p.slice(0, -1) + '*', name);   /* a revised chip answers for the plain one */
+    }
+    const missing = [];
+    const chip = (name, size) => {
+      const p = partOf(name);
+      const m = byPart.get(p) || byPart.get(p + '*') || (/[a-z]$/.test(p) ? byPart.get(p.slice(0, -1)) : undefined);
+      if (!m || members[m].length !== size) { missing.push(name); return new Uint8Array(size); }
+      return members[m];
+    };
+    /* `lanes` chips, two bytes at a time, byte-swapped: lane n's word i lands at i*lanes*2 + n*2 */
+    const interleave = (bufs, size) => {
+      const lanes = bufs.length, out = new Uint8Array(size * lanes);
+      for (let lane = 0; lane < lanes; lane++) {
+        const b = bufs[lane];
+        for (let i = 0, o = lane * 2; i < size; i += 2, o += lanes * 2) { out[o] = b[i + 1]; out[o + 1] = b[i]; }
+      }
+      return out;
+    };
+    const swapped = (names, size) => {
+      const out = new Uint8Array(size * names.length);
+      names.forEach((n, k) => { const b = chip(n, size), base = k * size; for (let i = 0; i < size; i += 2) { out[base + i] = b[i + 1]; out[base + i + 1] = b[i]; } });
+      return out;
+    };
+    const prog = interleave(LAYOUT.prog.lanes.map(n => chip(n, LAYOUT.prog.size)), LAYOUT.prog.size);
+    const bankParts = LAYOUT.bank.groups.map(g => interleave(g.map(n => chip(n, LAYOUT.bank.size)), LAYOUT.bank.size));
+    const bank = new Uint8Array(bankParts.reduce((a, p) => a + p.length, 0));
+    bankParts.reduce((off, p) => { bank.set(p, off); return off + p.length; }, 0);
+    const vrom = interleave(LAYOUT.vrom.lanes.map(n => chip(n, LAYOUT.vrom.size)), LAYOUT.vrom.size);
+    const snd = swapped(LAYOUT.snd.swap, LAYOUT.snd.size);
+    const samples = swapped(LAYOUT.samples.swap, LAYOUT.samples.size);
+    if (missing.length) throw new Error('chips missing from the zip (or the wrong size): ' + missing.join(', '));
+    /* the exception vectors are self-validating: vector n opens with `li r7, n` (0x38E0_00nn) */
+    const vbase = prog.length - 0x100000;
+    for (const v of [0x200, 0x300, 0x400, 0x500, 0x600, 0x700, 0x900]) {
+      const o = vbase + v;
+      if (prog[o] !== 0x38 || prog[o + 1] !== 0xE0 || prog[o + 2] !== 0 || prog[o + 3] !== (v >> 8)) throw new Error('the program ROM did not interleave into a valid exception vector table');
+    }
+    return [prog, bank, vrom, snd, samples];       /* the order main.c's web_rom() takes them in */
+  }
+
+  /* ---- IndexedDB (the same arcade-roms store the other pages use, under this game's prefix) ---- */
+  const ROM_DB = 'arcade-roms', ROM_STORE = 'files';
+  const openDb = () => new Promise((res, rej) => {
+    const req = indexedDB.open(ROM_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(ROM_STORE);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+  async function dbPut(files) {              /* Map name -> Uint8Array */
+    const db = await openDb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(ROM_STORE, 'readwrite'), st = tx.objectStore(ROM_STORE);
+      for (const [name, data] of files) st.put(data, `${GAME}/${name}`);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    });
+    db.close();
+  }
+  async function dbGet(name) {
+    const db = await openDb();
+    const out = await new Promise((res, rej) => {
+      const tx = db.transaction(ROM_STORE, 'readonly');
+      const rq = tx.objectStore(ROM_STORE).get(`${GAME}/${name}`);
+      rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+    });
+    db.close();
+    return out;
+  }
+  async function dbClearGame() {
+    const db = await openDb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(ROM_STORE, 'readwrite'), st = tx.objectStore(ROM_STORE);
+      const cur = st.openCursor();
+      cur.onsuccess = () => {
+        const c = cur.result;
+        if (!c) return res();
+        if (typeof c.key === 'string' && c.key.startsWith(`${GAME}/`)) st.delete(c.key);
+        c.continue();
+      };
+      cur.onerror = () => rej(cur.error);
+    });
+    db.close();
+  }
+
+  async function ready() {
+    $('loadline').style.display = 'none';
+    $('rompanel').style.display = 'none';
+    $('gamebox').style.display = 'block';
+  }
+  function needManual(msg) {
+    $('loadline').style.display = 'none';
+    $('rompanel').style.display = 'block';
+    if (msg) { $('romnote').style.display = 'block'; $('romnote').textContent = msg; }
+  }
+
+  $('romfile').addEventListener('change', async ev => {
+    const f = ev.target.files[0];
+    if (!f) return;
+    const data = new Uint8Array(await f.arrayBuffer());
+    try { buildImages(data); }                       /* every chip present, by name and size, before it is kept */
+    catch (e) { needManual('Not a usable lostwsga set: ' + e.message); return; }
+    await dbPut(new Map([[ZIP_KEY, data]]));
+    await ready();
+  });
+  $('forget').addEventListener('click', async () => { await dbClearGame(); location.reload(); });
+
+  if (await dbGet(ZIP_KEY)) {
+    $('forget').style.display = 'inline-block';
+    await ready();
+  } else {
+    /* the zip hosted next to the page: fetched silently on first visit; the
+     * manual picker only appears if this path fails. */
+    try {
+      $('loadline').style.display = 'block';
+      const r = await fetch('lostwsga.zip');
+      if (!r.ok) throw new Error('download ' + r.status);
+      const data = new Uint8Array(await r.arrayBuffer());
+      buildImages(data);
+      await dbPut(new Map([[ZIP_KEY, data]]));
+      await ready();
+    } catch (e) { needManual(); }
+  }
+
+  /* ---- the board's inputs: web_input_t in platform_web.c, written straight into shared memory ---- */
+  const IN = { x: 0, y: 4, buttons: 8, x2: 12, y2: 16, buttons2: 20 };
+  const BTN = { TRIG: 1, RELOAD: 2, COIN1: 4, START1: 8, COIN2: 16, START2: 32, TEST: 64, SERVICE: 128, FAST: 256 };
+  let module = null, inBase = 0;
+  const set = (off, v) => { if (inBase) module.HEAP32[(inBase + off) >> 2] = v; };
+  const get = off => (inBase ? module.HEAP32[(inBase + off) >> 2] : 0);
+  const press = (b, down) => set(IN.buttons, down ? (get(IN.buttons) | b) : (get(IN.buttons) & ~b));
+  function setupInput() {
+    const aim = e => {                      /* aim.js has already corrected clientX/Y for the light gun */
+      const r = canvas.getBoundingClientRect();
+      const x = Math.round((e.clientX - r.left) / r.width * W), y = Math.round((e.clientY - r.top) / r.height * H);
+      set(IN.x, Math.max(0, Math.min(W - 1, x)));
+      set(IN.y, Math.max(0, Math.min(H - 1, y)));
+    };
+    canvas.addEventListener('pointermove', aim);
+    canvas.addEventListener('pointerdown', e => {
+      aim(e);
+      if (e.button === 2) press(BTN.RELOAD, true);            /* right button: an off-screen shot, which is reload */
+      else if (e.button === 1) { press(BTN.COIN1, true); setTimeout(() => press(BTN.COIN1, false), 150); }
+      else press(BTN.TRIG, true);
+    });
+    const up = e => { if (e.button === 2) press(BTN.RELOAD, false); else if (e.button !== 1) press(BTN.TRIG, false); };
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
+    window.addEventListener('blur', () => set(IN.buttons, 0));
+    const KEYS = { Space: BTN.RELOAD, ControlLeft: BTN.TRIG, ControlRight: BTN.TRIG, Digit5: BTN.COIN1, Digit6: BTN.COIN2,
+                   Digit1: BTN.START1, Enter: BTN.START1, Digit2: BTN.START2, F2: BTN.TEST, Digit9: BTN.SERVICE, F3: BTN.SERVICE, Tab: BTN.FAST };
+    const wanted = e => !(e.target instanceof HTMLInputElement) && (e.target === canvas || e.target === document.body || e.target === screen || screen.contains(e.target));
+    window.addEventListener('keydown', e => {
+      if (!wanted(e)) return;
+      if (e.code === 'KeyM' && !e.repeat) { toggleMute(); e.preventDefault(); return; }
+      const b = KEYS[e.code];
+      if (b) { press(b, true); e.preventDefault(); }
+    });
+    window.addEventListener('keyup', e => {
+      const b = KEYS[e.code];
+      if (b) { press(b, false); e.preventDefault(); }
+    });
+  }
+
+  /* ---- the picture: the board presents 496x384 RGBA into shared memory and bumps a counter;
+   * the page copies it onto the canvas whenever the counter has moved ---- */
+  function startPresenting() {
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const img = ctx.createImageData(W, H);
+    const counter = module._web_frame_count() >> 2;
+    let last = 0, drawn = false;
+    const tick = () => {
+      const n = module.HEAPU32[counter];
+      if (n !== last) {
+        last = n;
+        const p = module._web_frame();
+        if (p) {
+          img.data.set(module.HEAPU8.subarray(p, p + W * H * 4));
+          ctx.putImageData(img, 0, 0);
+          if (!drawn) { drawn = true; if (crt) crt.start(); }
+        }
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  /* ---- sound: an AudioWorklet reads the board's ring straight out of wasm memory ---- */
+  async function startAudio(ver) {
+    let actx;
+    try { actx = new AudioContext({ sampleRate: 44100 }); } catch (e) { actx = new AudioContext(); }
+    await actx.audioWorklet.addModule('audio.js?v=' + ver);
+    const node = new AudioWorkletNode(actx, 'm3-player', { outputChannelCount: [2] });
+    node.port.postMessage({ buffer: module.wasmMemory.buffer, ring: module._web_audio_ring(), write: module._web_audio_write(),
+                            size: module._web_audio_size(), rate: actx.sampleRate });
+    node.port.onmessage = e => { if (location.search.includes('audiotrace')) console.log('[audio]', e.data); };
+    node.connect(actx.destination);
+    const resume = () => { if (actx.state !== 'running') actx.resume(); };
+    window.addEventListener('pointerdown', resume);
+    window.addEventListener('keydown', resume);
+    resume();
+  }
+
+  /* ---- boot ---- */
+  if (typeof SharedArrayBuffer === 'undefined')
+    say('This page needs SharedArrayBuffer (served cross-origin isolated) — the game runs on a thread.');
+  let booted = false;
+  $('start').addEventListener('click', async () => {
+    if (booted) return;
+    booted = true;
+    $('start').disabled = true;
+    say('Building the board’s ROM images…');
+    try {
+      const zip = await dbGet(ZIP_KEY);
+      if (!zip) throw new Error('no stored ROM zip');
+      await new Promise(r => setTimeout(r, 30));      /* let the status paint before the (brief) unzip */
+      const images = buildImages(zip);
+      say('Loading…');
+      const ver = (await fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : '0').catch(() => '0')).trim();
+      await new Promise((res, rej) => {
+        const sc = document.createElement('script');
+        sc.src = 'lostworld.js?v=' + ver;
+        sc.onload = res; sc.onerror = () => rej(new Error('lostworld.js failed to load'));
+        document.head.appendChild(sc);
+      });
+      const cfg = {
+        locateFile: f => f + '?v=' + ver,
+        print: t => console.log('[lostworld]', t),
+        printErr: t => console.warn('[lostworld]', t),
+        preRun: [() => {
+          /* the rasteriser draws in bands, one thread each; leave a core for the guest and one for
+             the sound board and the page. ?env=KEY:VAL,... overrides any M3_* variable. */
+          const cores = navigator.hardwareConcurrency || 4;
+          cfg.ENV.M3_RENDER_THREADS = String(Math.max(1, Math.min(8, cores - 2)));
+          const env = new URLSearchParams(location.search).get('env');
+          if (env) for (const kv of env.split(',')) { const [k, v] = kv.split(':'); cfg.ENV[k] = v || '1'; }
+        }],
+      };
+      module = await createLostWorld(cfg);
+      images.forEach((u8, i) => {                      /* the ROM images go straight into wasm memory */
+        const p = module._web_alloc(u8.length);
+        if (!p) throw new Error('out of memory for the ROM images');
+        module.HEAPU8.set(u8, p);
+        module._web_rom(i, p, u8.length);
+      });
+      inBase = module._web_input();
+      set(IN.x, W >> 1); set(IN.y, H >> 1);
+      if (new URLSearchParams(location.search).has('mute')) { muted = true; module._web_mute(1); panel.refresh(); }
+      setupInput();
+      startPresenting();
+      startAudio(ver).catch(e => console.warn('audio:', e));
+      say('');
+      powered();
+      canvas.focus();
+      window.__lostworld = module;                     /* debug access to the module */
+      const extra = new URLSearchParams(location.search).get('args');
+      module.callMain(extra ? extra.split(',') : []);
+    } catch (e) {
+      say('Boot failed: ' + (e && e.message ? e.message : String(e)) + ' (see console)');
+      console.error('boot error:', e, e && e.errno, e && e.stack);
+      $('start').disabled = false;
+      booted = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

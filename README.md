@@ -14,6 +14,8 @@ in the browser, cached in IndexedDB, and never uploaded anywhere).
 |---|---|---|---|
 | `timecrisis/` | Time Crisis (1995) | Namco Super System 22 | [`namco22-decompile` branch `web-port`](https://github.com/TheTomBritton/namco22-decompile/tree/web-port) |
 | `timecrisis2/` | Time Crisis II (1997) | Namco System 23 | [`namco22-decompile` branch `tc2-web`](https://github.com/TheTomBritton/namco22-decompile/tree/tc2-web) |
+| `virtuacop2/` | Virtua Cop 2 (1995) | Sega Model 2A-CRX | [`model2recomp` branch `vcop2-web`](https://github.com/TheTomBritton/model2recomp/tree/vcop2-web) |
+| `lostworld/` | The Lost World: Jurassic Park (1997) | Sega Model 3 Step 1.5 | [`lostworld` branch `web`](https://github.com/TheTomBritton/lostworld/tree/web) on [`model3recomp` branch `web`](https://github.com/TheTomBritton/model3recomp/tree/web) |
 
 Both engines are Emscripten builds of the
 [spacestate1/namco22-decompile](https://github.com/spacestate1/namco22-decompile)
@@ -24,11 +26,30 @@ outputs next to the page:
 - Time Crisis: `tc.js` + `tc.wasm` into `timecrisis/`
 - Time Crisis II: `tc2.js` + `tc2.wasm` into `timecrisis2/`
 
-ROM sets (MAME naming): `timecris.zip` (World TS2 Ver.B) and `timecrs2.zip`.
-The pages try to fetch a zip hosted next to them first; when that 404s (as it
-will here) the manual picker appears.
+Virtua Cop 2 is an Emscripten build of
+[sp00nznet/model2recomp](https://github.com/sp00nznet/model2recomp) (the
+branch above carries the web port and the game's entry points): `vcop2.js` +
+`vcop2.wasm` into `virtuacop2/`.
 
-The engines suspend with **JSPI**, so they need Chrome/Edge 137+ for now.
+The Lost World is [sp00nznet/lostworld](https://github.com/sp00nznet/lostworld)
+on [sp00nznet/model3recomp](https://github.com/sp00nznet/model3recomp); the
+branches above add a browser platform layer (`platform_web.c`: the guest on a
+pthread, frames and audio in shared memory) and the browser link. Build the
+ROM images and lift per that repo, then `emcmake cmake -S . -B build-web` +
+`cmake --build build-web`: `lostworld.js` + `lostworld.wasm` into `lostworld/`
+(`audio.js`, the page's AudioWorklet, is here).
+
+ROM sets (MAME naming): `timecris.zip` (World TS2 Ver.B), `timecrs2.zip`,
+`vcop2.zip` and `lostwsga.zip`. The pages try to fetch a zip hosted next to
+them first; when that 404s (as it will here) the manual picker appears. The
+Lost World page builds the board's five ROM images from the zip itself, the
+same interleave the engine's `rom_loader.py` proves against the PowerPC
+exception vectors.
+
+The Namco and Model 2 engines suspend with **JSPI**, so they need Chrome/Edge
+137+ for now. The Lost World runs on **pthreads** instead, so its directory
+must be served cross-origin isolated (COOP/COEP headers; `test/serve-coop.py`
+does that locally).
 
 *The House of the Dead 2 page is not included: it derives from
 [yunophilia/hotd2-recompiled](https://github.com/yunophilia/hotd2-recompiled),
@@ -82,6 +103,9 @@ Node harnesses in `test/` (need `npm install puppeteer-core` and a Chrome):
 - `aim-browser-test.js` — the same layer driven in a real page
 - `gameplay-test.js`, `browser-test.js`, `soak-test.js`, `f620-test.js`,
   `headed-test.js`, `tc2-gameplay-test.js` — boot/coin/play smoke tests
+- `cabinet-test.js` — the frame and control panel on every page
+- `lostworld-page-test.js` — the Lost World page against `serve-coop.py`:
+  isolation, ROM build, fields per second, coin and start, screenshots
 - `test-rom-import.js` — the ROM importer against a reference build
 
 Environment variables: `ROM_ZIP` (path to your ROM zip), `OUT` (screenshot
