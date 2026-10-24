@@ -480,6 +480,15 @@
       booted = false;
     }
   });
+
+  /* F11 = the page's fullscreen, F8 = the page's frame: both taken before the board's key handler sees them */
+  addEventListener('keydown', e => {
+    if (e.code !== 'F11' && e.code !== 'F8') return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (e.repeat) return;
+    if (e.code === 'F11') Cabinet.fullscreen(screen); else cycleBorder();
+  }, true);
+  addEventListener('keyup', e => { if (e.code === 'F11' || e.code === 'F8') { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
 })();
 </script>
 </body>

@@ -5,7 +5,7 @@
 // canvas only, hidden until power), F11, with screenshots of each state under OUT.
 //
 //   python3 test/serve-coop.py 8643                (from the repo root; the game's zip next to its page)
-//   GAME=timecrisis node test/cabinet-test.js      (timecrisis | timecrisis2 | virtuacop2 | hotd2)
+//   GAME=timecrisis node test/cabinet-test.js      (timecrisis | timecrisis2 | virtuacop2 | hotd2 | lostworld)
 //   PAGE_URL=https://example.test/arcade/timecrisis/ GAME=timecrisis node test/cabinet-test.js
 // Env: PAGE_BASE (default http://127.0.0.1:8643), PAGE_URL (a whole URL instead), CHROME, OUT,
 // BOOT_MS (wait after POWER ON, default 20000), PROFILE=off (no gun profile), CRT=on (profile starts with it).
