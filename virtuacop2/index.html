@@ -137,6 +137,7 @@
           <div><dt>Service / Test</dt><dd>9 / F2</dd></div>
           <div><dt>Light-gun border (Sinden)</dt><dd>F8</dd></div>
           <div><dt>CRT look / picture brightness</dt><dd>F9</dd></div>
+          <div><dt>CRT scanlines (resolution)</dt><dd>Shift+F9</dd></div>
           <div><dt>Fullscreen</dt><dd>F11</dd></div>
         </dl>
       </section>
@@ -160,8 +161,8 @@
 </script>
 <script src="../lib/fflate.js"></script>
 <script src="../sinden/aim.js?v=7"></script>
-<script src="../sinden/crt.js?v=3"></script>
-<script src="../lib/cabinet.js?v=1"></script>
+<script src="../sinden/crt.js?v=4"></script>
+<script src="../lib/cabinet.js?v=2"></script>
 <script>
 'use strict';
 (async () => {
@@ -175,7 +176,7 @@
   const frame = Cabinet.frame(screen, canvas, gunProfile);
   SindenAim.install(canvas, gunProfile, { frame: frame.element });
   /* CRT look (F9), over the canvas only: the frame stays above it. Hidden until the game draws. */
-  const crt = SindenCrt.install(canvas, gunProfile, null, { deferred: true, status: say, onChange: () => panel.refresh() });
+  const crt = SindenCrt.install(canvas, gunProfile, null, { deferred: true, lines: 384, status: say, onChange: () => panel.refresh() });
   /* the control panel: every key the board reads is a button too */
   const tap = code => { canvas.focus({ preventScroll: true }); return Cabinet.tapKey(canvas, code); };
   const cycleBorder = () => { frame.cycle(); say(frame.get() ? `Light-gun border ${frame.get()} %` : 'Light-gun border off'); panel.refresh(); };
@@ -189,6 +190,7 @@
     { label: 'Display', rows: [[
       { id: 'border', kind: 'key', label: 'Gun border', key: 'F8', readout: () => frame.text(), onClick: cycleBorder },
       { id: 'crt', kind: 'key', label: 'CRT', key: 'F9', readout: () => (crt ? crt.text() : 'OFF'), onClick: () => crt && crt.cycle() },
+      { id: 'crtlines', kind: 'fader', label: 'CRT lines', key: 'Shift+F9', steps: SindenCrt.STOPS.length, title: 'The CRT look\u2019s scanlines: AUTO is the game\u2019s own 384; the count shows what fits the screen', value: () => (crt ? crt.stop() : 0), onInput: (i) => crt && crt.setStop(i, true), active: () => !!(crt && crt.get().enabled), readout: () => (crt ? crt.linesText() : 'AUTO') },
       { id: 'fullscreen', kind: 'key', label: 'Fullscreen', key: 'F11', onClick: () => Cabinet.fullscreen(screen) }]] },
     { label: 'Light gun', rows: [[{ id: 'calibrate', kind: 'link', label: 'Calibrate', href: '../calibrate/' }]] },
   ] });

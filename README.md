@@ -65,7 +65,11 @@ which has no license yet.*
   keys reach is a button too) and a key tap for the SDL engines.
 - `sinden/crt.js` — a CRT look over the canvas (scanlines, mask, softness,
   dimmer picture; F9 cycles off / 100 / 85 / 70 / 55 %), saved in the
-  calibration profile.
+  calibration profile. Scanlines are a whole number of screen pixels tall, so
+  they never beat against the pixel grid, and a **CRT LINES** fader on the
+  panel (Shift+F9) picks the resolution: AUTO is the game's native line count
+  (480 for the Namco and NAOMI games, 384 for Sega Model 2 and 3), or 160 /
+  192 / 240 / 320 / 480.
 
 ## Sinden light gun
 

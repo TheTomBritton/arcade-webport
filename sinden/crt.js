@@ -20,12 +20,24 @@
 // normally covers the whole canvas: layout may be null. install() takes { deferred } (the
 // view stays hidden until start() - the game is not drawing yet), { onChange } and a
 // cycle() for a button to do what F9 does.
+//
+// v4: scanlines are a whole number of screen pixels tall. At 480 lines on a 1080p panel
+// the old pitch was ~2.1 px, and a cosine at that pitch beats against the pixel grid into
+// broad bright and dark bands. Each scanline is now `pitch` rows of screen pixels, sampled
+// once at its centre (a beam), brightest on its middle row and dark in the gap. The
+// resolution is a setting (profile.crt.lines, 0 = the game's native lines, install()'s
+// opts.lines): the pitch is the whole number of pixels nearest picture height / lines, at
+// least 2, so the count actually drawn depends on the picture's size and lines() says it.
+// Shift+F9 steps through STOPS; the cabinet panel has a fader for it.
 'use strict';
 
 const SindenCrt = (() => {
 
   const LEVELS = [100, 85, 70, 55];        // picture brightness steps, percent
-  const LINES = 480;                       // the games' native lines: one scanline each
+  const LINES = 480;                       // native lines when a page does not say (opts.lines)
+  // The resolution settings, 0 = native. Spaced so neighbours land on different whole-pixel
+  // pitches at the sizes that matter (a 1080p picture: 158, 190, 238, 317, 475 lines).
+  const STOPS = [0, 160, 192, 240, 320, 480];
 
   const VS = 'attribute vec2 a; void main() { gl_Position = vec4(a, 0.0, 1.0); }';
   const FS = `precision mediump float;
@@ -33,7 +45,7 @@ uniform sampler2D tex;
 uniform vec2 size;                 // the view, px (the on-screen size: scanlines and mask are drawn in screen pixels)
 uniform vec4 pic;                  // the picture: x, y, w, h (view px, top-left origin)
 uniform vec4 frame;                // inside the white border: x, y, w, h; the ring between it and pic is black
-uniform float lines, scan, mask, dx, bright;   // dx: the horizontal softness, in texture units
+uniform float pitch, scan, mask, dx, bright;   // pitch: screen px per scanline (whole); dx: horizontal softness, texture units
 uniform float border;              // 1 when a light-gun border is on: outside the frame is painted solid white
 void main() {
   vec2 p = vec2(gl_FragCoord.x, size.y - gl_FragCoord.y);
@@ -46,17 +58,23 @@ void main() {
     gl_FragColor = inFrame ? vec4(0.0, 0.0, 0.0, 1.0) : (border > 0.5 ? vec4(1.0) : texture2D(tex, uv));
     return;
   }
-  vec2 q = (p - pic.xy) / pic.zw;
-  vec3 c = 0.5 * texture2D(tex, uv).rgb
-         + 0.25 * (texture2D(tex, uv - vec2(dx, 0.0)).rgb + texture2D(tex, uv + vec2(dx, 0.0)).rgb);
-  float sl = 1.0 - scan * (0.5 + 0.5 * cos(6.2831853 * q.y * lines));
+  // Which scanline this pixel row is in, counted in whole screen pixels from the picture's
+  // top, and the row within it. The line is sampled once, at its centre: a beam.
+  float ry = floor(p.y - pic.y);
+  float line = floor(ry / pitch), j = ry - line * pitch;
+  vec2 st = vec2(uv.x, (pic.y + (line + 0.5) * pitch) / size.y);
+  vec3 c = 0.5 * texture2D(tex, st).rgb
+         + 0.25 * (texture2D(tex, st - vec2(dx, 0.0)).rgb + texture2D(tex, st + vec2(dx, 0.0)).rgb);
+  // The beam's profile across the line: full on its centre row, falling off towards the gap.
+  float d = abs(j - floor((pitch - 1.0) * 0.5)) / (pitch * 0.5);
+  float sl = 1.0 - scan * (1.0 - exp(-2.2 * d * d));
   float col = mod(gl_FragCoord.x, 3.0);
   vec3 m = 1.0 - mask * vec3(col < 1.0 ? 0.0 : 1.0, (col >= 1.0 && col < 2.0) ? 0.0 : 1.0, col >= 2.0 ? 0.0 : 1.0);
   gl_FragColor = vec4(c * sl * m * bright, 1.0);
 }`;
 
   function settings(profile) {
-    return Object.assign({ enabled: false, brightness: 100, scanlines: 50, mask: 20, blur: 50 }, profile.crt || {});
+    return Object.assign({ enabled: false, brightness: 100, scanlines: 50, mask: 20, blur: 50, lines: 0 }, profile.crt || {});
   }
 
   // The state F9 moves to: off -> 100 -> 85 -> 70 -> 55 -> off.
@@ -67,6 +85,9 @@ void main() {
       ? Object.assign({}, crt, { enabled: false })
       : Object.assign({}, crt, { brightness: LEVELS[i + 1] });
   }
+
+  // The scanline pitch for a picture `h` screen px tall: whole pixels, at least 2.
+  const pitchFor = (h, lines) => Math.max(2, Math.round(h / lines));
 
   function compile(gl, type, src) {
     const s = gl.createShader(type);
@@ -107,9 +128,11 @@ void main() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     const u = {};
-    for (const n of ['size', 'pic', 'frame', 'lines', 'scan', 'mask', 'dx', 'bright', 'border']) u[n] = gl.getUniformLocation(prog, n);
+    for (const n of ['size', 'pic', 'frame', 'pitch', 'scan', 'mask', 'dx', 'bright', 'border']) u[n] = gl.getUniformLocation(prog, n);
 
+    const native = opts.lines || LINES;
     let crt = settings(profile);
+    let shown = 0;                           // the line count last drawn, to tell the panel when it moves
     let running = false;
     let armed = !opts.deferred;              // deferred: nothing to look at until the game draws
 
@@ -138,24 +161,22 @@ void main() {
       const l = layout(W, H), sx = VW / W, sy = VH / H;
       const scale = (r) => [r[0] * sx, r[1] * sy, r[2] * sx, r[3] * sy];
       const picture = scale(l.picture), frame = scale(l.frame);
-      // Scanlines are a screen-pixel pattern, so their count follows the picture's height on
-      // screen: one per native line only when that leaves at least two pixels per line
-      // (fullscreen on a 1080p panel), every other line below that, and fading out when even
-      // those would be under two pixels - otherwise a windowed picture aliases into moire.
-      let lines = LINES, scan = crt.scanlines / 100;
-      while (lines > 60 && picture[3] / lines < 2) lines /= 2;
-      const pitch = picture[3] / lines;
-      if (pitch < 2) scan *= Math.max(0, pitch - 1);
-      // The mask is a 3-pixel pattern: at small sizes it is just a tint, so ease it out too.
-      const mask = (crt.mask / 100) * Math.min(1, Math.max(0, (picture[3] / LINES - 0.75) / 0.75));
+      // Whole-pixel scanlines never alias, at any size: a small windowed picture just gets
+      // fewer of them (the pitch never drops under 2).
+      const pitch = pitchFor(picture[3], crt.lines || native);
+      const drawn = Math.round(picture[3] / pitch);
+      if (drawn !== shown) { shown = drawn; if (opts.onChange) opts.onChange(crt); }
+      const scan = crt.scanlines / 100;
+      // The mask is a 3-pixel pattern: at small sizes it is just a tint, so ease it out.
+      const mask = (crt.mask / 100) * Math.min(1, Math.max(0, (picture[3] / native - 0.75) / 0.75));
       gl.uniform2f(u.size, VW, VH);
-      gl.uniform4fv(u.pic, picture);
+      gl.uniform4fv(u.pic, [Math.round(picture[0]), Math.round(picture[1]), picture[2], picture[3]]);
       gl.uniform4fv(u.frame, frame);
-      gl.uniform1f(u.lines, lines);
+      gl.uniform1f(u.pitch, pitch);
       gl.uniform1f(u.scan, scan);
       gl.uniform1f(u.mask, mask);
       gl.uniform1f(u.border, (frame[0] > 0.5 || frame[1] > 0.5) ? 1 : 0);
-      gl.uniform1f(u.dx, (crt.blur / 100) * 0.6 * (l.picture[2] / 640) / W);   // 0.6 of a source pixel at full
+      gl.uniform1f(u.dx, (crt.blur / 100) * 0.6 * (l.picture[2] / (native * 4 / 3)) / W);   // 0.6 of a native pixel at full
       gl.uniform1f(u.bright, crt.brightness / 100);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
@@ -194,6 +215,20 @@ void main() {
       if (opts.onChange) opts.onChange(crt);
     };
     const text = () => (crt.enabled ? `${crt.brightness} %` : 'OFF');
+    // The scanlines drawn at the picture's present size (the view's height, device px).
+    const lines = () => {
+      const h = Math.round(canvas.clientHeight * (window.devicePixelRatio || 1));
+      return h ? Math.round(h / pitchFor(h, crt.lines || native)) : 0;
+    };
+    const linesText = () => (crt.lines ? String(lines()) : 'AUTO');
+    // The resolution as a stop index (STOPS), for the fader and Shift+F9.
+    const stop = () => Math.max(0, STOPS.indexOf(crt.lines));
+    const setStop = (i, quiet) => {
+      i = Math.max(0, Math.min(STOPS.length - 1, Math.round(i)));
+      if (STOPS[i] === crt.lines) return;
+      set({ lines: STOPS[i] });
+      if (!quiet) say(`CRT ${crt.lines ? lines() + ' lines' : 'lines: native (' + lines() + ')'}`);
+    };
     // what F9 does: off -> 100 -> 85 -> 70 -> 55 -> off, with the notice
     const cycle = () => {
       set(next(crt));
@@ -203,16 +238,17 @@ void main() {
       if (e.code !== 'F9') return;
       e.preventDefault(); e.stopImmediatePropagation();
       if (e.repeat) return;
-      cycle();
+      if (e.shiftKey) setStop((stop() + 1) % STOPS.length);   // Shift+F9: the next resolution
+      else cycle();
     }, true);
     window.addEventListener('keyup', (e) => { if (e.code === 'F9') { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
     addEventListener('resize', place);
     document.addEventListener('fullscreenchange', () => setTimeout(place, 50));
     apply();
-    return { el, set, get: () => crt, draw, cycle, text, start: () => { armed = true; apply(); } };
+    return { el, set, get: () => crt, draw, cycle, text, lines, linesText, stop, setStop, native, start: () => { armed = true; apply(); } };
   }
 
-  return { LEVELS, LINES, settings, next, install };
+  return { LEVELS, LINES, STOPS, settings, next, pitchFor, install };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SindenCrt;
