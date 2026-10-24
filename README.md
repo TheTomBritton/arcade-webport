@@ -37,7 +37,10 @@ branches above add a browser platform layer (`platform_web.c`: the guest on a
 pthread, frames and audio in shared memory) and the browser link. Build the
 ROM images and lift per that repo, then `emcmake cmake -S . -B build-web` +
 `cmake --build build-web`: `lostworld.js` + `lostworld.wasm` into `lostworld/`
-(`audio.js`, the page's AudioWorklet, is here).
+(`audio.js`, the page's AudioWorklet, is here). The board keeps its own
+57.524 Hz, which on a 60 Hz display repeats a picture now and then;
+`?env=M3_PACE:display` paces it on the page's paints instead (every paint a
+new field, the game and its sound 4.3% fast).
 
 ROM sets (MAME naming): `timecris.zip` (World TS2 Ver.B), `timecrs2.zip`,
 `vcop2.zip` and `lostwsga.zip`. The pages try to fetch a zip hosted next to

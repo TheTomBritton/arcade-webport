@@ -387,8 +387,10 @@
     const ctx = canvas.getContext('2d', { alpha: false });
     const img = ctx.createImageData(W, H);
     const counter = module._web_frame_count() >> 2;
+    const paint = module._web_paint_count ? module._web_paint_count() >> 2 : 0;   /* ?env=M3_PACE:display paces the board on these */
     let last = 0, drawn = false;
     const tick = () => {
+      if (paint) { Atomics.add(module.HEAP32, paint, 1); Atomics.notify(module.HEAP32, paint); }
       const n = module.HEAPU32[counter];
       if (n !== last) {
         last = n;
@@ -410,8 +412,9 @@
     try { actx = new AudioContext({ sampleRate: 44100 }); } catch (e) { actx = new AudioContext(); }
     await actx.audioWorklet.addModule('audio.js?v=' + ver);
     const node = new AudioWorkletNode(actx, 'm3-player', { outputChannelCount: [2] });
+    const speed = module.ENV && module.ENV.M3_PACE === 'display' ? 60 / 57.524 : 1;   /* a field per paint runs the board fast */
     node.port.postMessage({ buffer: module.wasmMemory.buffer, ring: module._web_audio_ring(), write: module._web_audio_write(),
-                            size: module._web_audio_size(), rate: actx.sampleRate });
+                            size: module._web_audio_size(), rate: actx.sampleRate, speed });
     node.port.onmessage = e => { if (location.search.includes('audiotrace')) console.log('[audio]', e.data); };
     node.connect(actx.destination);
     const resume = () => { if (actx.state !== 'running') actx.resume(); };

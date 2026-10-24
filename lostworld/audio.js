@@ -17,11 +17,11 @@ class M3Player extends AudioWorkletProcessor {
     this.lastL = 0; this.lastR = 0; this.dry = false;
     this.underruns = 0; this.resyncs = 0; this.minFill = Infinity; this.reported = 0;
     this.port.onmessage = e => {
-      const { buffer, ring, write, size, rate } = e.data;
+      const { buffer, ring, write, size, rate, speed } = e.data;
       this.ring = new Int16Array(buffer, ring, size * 2);
       this.counter = new Uint32Array(buffer, write, 1);
       this.size = size;
-      this.ratio = 44100 / (rate || sampleRate);   // board frames per output frame
+      this.ratio = 44100 / (rate || sampleRate) * (speed || 1);   // board frames per output frame (speed: a board paced faster than its own clock)
       this.pos = Atomics.load(this.counter, 0) - this.target;
       this.ready = true;
     };
