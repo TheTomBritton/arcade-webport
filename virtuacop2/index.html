@@ -197,6 +197,7 @@
   const powered = () => { panel.item('start').lit(true); panel.enable(['coin', 'p1start', 'test', 'service']); if (crt) crt.start(); };
   const GAME = 'vcop2';
   const ZIP_KEY = 'vcop2.zip';
+  const NV_FILE = 'vcop2.nv', NV_KEY = 'save/' + NV_FILE;
 
   /* ---- the set's layout: MAME's ROM_START for vcop2, as model2recomp's tools/mame_romset.py
    * reads it. Each chip holds one 16-bit half of every 32-bit word of its region, so its
@@ -378,12 +379,23 @@
       const FS = module.FS;
       FS.mkdir('/roms');
       for (const [name, data] of Object.entries(regions)) FS.writeFile('/roms/' + name, data);
+      /* the cabinet's backup RAM and EEPROM (test menu settings), kept across visits: main loads
+         the file if it is there; a tab never quits, so the page has it saved every few seconds */
+      const kept = await dbGet(NV_KEY);
+      if (kept) FS.writeFile('/' + NV_FILE, kept);
       say('');
       powered();
       canvas.focus();
       window.__vcop2 = module;               /* debug access to the module + FS */
       const extra = new URLSearchParams(location.search).get('args');
       module.callMain(extra ? extra.split(',') : ['/roms']);
+      const persist = () => {
+        if (!module._web_save_nvram) return;
+        module._web_save_nvram();
+        try { dbPut(new Map([[NV_KEY, FS.readFile('/' + NV_FILE)]])).catch(() => {}); } catch (_) {}
+      };
+      setInterval(persist, 5000);
+      addEventListener('pagehide', persist);
     } catch (e) {
       say('Boot failed: ' + (e && e.message ? e.message : String(e)) + ' (see console)');
       console.error('boot error:', e, e && e.errno, e && e.stack);

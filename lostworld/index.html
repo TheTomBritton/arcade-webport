@@ -190,6 +190,7 @@
   const powered = () => { panel.item('start').lit(true); panel.enable(['coin', 'p1start', 'test', 'service']); };
   const GAME = 'lostworld';
   const ZIP_KEY = 'lostwsga.zip';
+  const NV_FILE = 'lostworld.nv', NV_KEY = 'save/' + NV_FILE;
 
   /* ---- the set's layout, as model3recomp's tools/rom_loader.py proves it against the PowerPC
    * exception vectors and tools/build_roms.py writes it. The program and the banked CROM are four
@@ -461,6 +462,11 @@
         module.HEAPU8.set(u8, p);
         module._web_rom(i, p, u8.length);
       });
+      /* the board's battery RAM and EEPROM (high scores, operator settings), kept across visits:
+         the board loads the file at power-on; a tab never quits, so the page has it saved every
+         few seconds */
+      const kept = await dbGet(NV_KEY);
+      if (kept && module.FS) module.FS.writeFile('/' + NV_FILE, kept);
       inBase = module._web_input();
       set(IN.x, W >> 1); set(IN.y, H >> 1);
       if (new URLSearchParams(location.search).has('mute')) { muted = true; module._web_mute(1); panel.refresh(); }
@@ -473,6 +479,13 @@
       window.__lostworld = module;                     /* debug access to the module */
       const extra = new URLSearchParams(location.search).get('args');
       module.callMain(extra ? extra.split(',') : []);
+      const persist = () => {
+        if (!module._web_save_nvram || !module.FS) return;
+        module._web_save_nvram();
+        try { dbPut(new Map([[NV_KEY, module.FS.readFile('/' + NV_FILE)]])).catch(() => {}); } catch (_) {}
+      };
+      setInterval(persist, 5000);
+      addEventListener('pagehide', persist);
     } catch (e) {
       say('Boot failed: ' + (e && e.message ? e.message : String(e)) + ' (see console)');
       console.error('boot error:', e, e && e.errno, e && e.stack);

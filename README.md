@@ -51,6 +51,13 @@ The Namco and Model 2 engines suspend with **JSPI**, so they need Chrome/Edge
 must be served cross-origin isolated (COOP/COEP headers; `test/serve-coop.py`
 does that locally).
 
+Each game's battery RAM and EEPROM (high scores, operator and test-menu
+settings) is kept between visits in the same IndexedDB store, under
+`<game>/save/`. The Namco pages keep the files their engine writes; for
+Virtua Cop 2 and The Lost World the page has the module write its nvram file
+(`web_save_nvram`, in the branches above) every few seconds, since a browser
+tab never quits.
+
 *The House of the Dead 2 page is not included: it derives from
 [yunophilia/hotd2-recompiled](https://github.com/yunophilia/hotd2-recompiled),
 which has no license yet.*

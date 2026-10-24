@@ -26,7 +26,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
+class Server(http.server.ThreadingHTTPServer):
+    # The default listen backlog is 5: a page's first burst of requests can
+    # overflow it, and the connection reset that follows loses a script
+    # (crt.js, say) and with it the whole page, roughly one load in four.
+    request_queue_size = 128
+
+
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8643
     print(f"serving {ROOT} on http://127.0.0.1:{port}")
-    http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    Server(("127.0.0.1", port), Handler).serve_forever()
