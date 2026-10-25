@@ -37,9 +37,6 @@
     font-size: clamp(20px, 4.5vw, 30px); font-weight: 700; letter-spacing: .08em;
     color: var(--bright); text-shadow: 0 0 18px rgba(95, 223, 95, .35);
   }
-  /* no logo art yet: the title as the codec's own lettering */
-  .machine h1.wordmark { line-height: 1.1; font: 800 clamp(26px, 6vw, 40px)/1.1 var(--mono); letter-spacing: .18em; color: var(--bright); text-shadow: 0 0 10px rgba(95, 223, 95, .45); }
-  .machine h1.wordmark small { display: block; margin-top: 6px; font-size: 11px; letter-spacing: .3em; color: var(--dim); font-weight: 600; }
   #loadline {
     display: none;
     max-width: 640px; margin: 10px auto;
@@ -109,7 +106,7 @@
   <main id="main-content">
     <div class="arcade-wrap">
       <div class="machine">
-        <h1 class="wordmark">CRISIS ZONE<small>NAMCO 1999 &middot; SYSTEM 23 EVOLUTION 2</small></h1>
+        <h1><span>CRISIS ZONE</span></h1>
         <div id="loadline">ESTABLISHING LINK &mdash; DOWNLOADING GAME DATA<span class="cursor" aria-hidden="true"></span></div>
         <!-- fallback only: shown when nothing is stored AND the hosted download fails -->
         <section class="panel" id="rompanel" style="display:none">
@@ -135,7 +132,7 @@
         <dl class="controls">
           <div><dt>Aim</dt><dd>mouse / light gun</dd></div>
           <div><dt>Shoot (hold: it is a machine gun)</dt><dd>left click / trigger</dd></div>
-          <div><dt>Pedal (lower the shield, attack)</dt><dd>right click / Space</dd></div>
+          <div><dt>Pedal (lower the shield, attack)</dt><dd>Space / right or middle click (the gun's side buttons or pump)</dd></div>
           <div><dt>Coin (a credit starts the game)</dt><dd>5</dd></div>
           <div><dt>Trigger key</dt><dd>Enter</dd></div>
           <div><dt>Menu</dt><dd>Esc</dd></div>
@@ -339,8 +336,11 @@
       FS.chdir('/game');
       /* the page draws the light gun's frame and owns fullscreen, so the engine does neither (a
          saved F8 or menu choice would inset its picture inside our frame); the calibration suite's
-         crosshair + key choices when its profile is on (the engine reads them at start) */
-      const cfgValues = Object.assign({ gun_border: 0, window_mode: 0, fullscreen: 0 }, SindenAim.engineValues(gunProfile));
+         crosshair + key choices when its profile is on (the engine reads them at start).
+         Space is the pedal here whether or not the profile is on (the engine's default has it
+         fire): the shield is the game, and a gun on its own has no foot pedal */
+      const cfgValues = Object.assign({ gun_border: 0, window_mode: 0, fullscreen: 0, key_pedal: 'Space', key_trigger: 'Return' },
+        SindenAim.engineValues(gunProfile));
       for (const name of ['crszone.cfg']) {
         let text = '';
         try { text = FS.readFile('/game/' + name, { encoding: 'utf8' }); } catch (_) {}
