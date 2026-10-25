@@ -16,6 +16,7 @@ in the browser, cached in IndexedDB, and never uploaded anywhere).
 | `timecrisis2/` | Time Crisis II (1997) | Namco System 23 | [`namco22-decompile` branch `tc2-web`](https://github.com/TheTomBritton/namco22-decompile/tree/tc2-web) |
 | `virtuacop2/` | Virtua Cop 2 (1995) | Sega Model 2A-CRX | [`model2recomp` branch `vcop2-web`](https://github.com/TheTomBritton/model2recomp/tree/vcop2-web) |
 | `lostworld/` | The Lost World: Jurassic Park (1997) | Sega Model 3 Step 1.5 | [`lostworld` branch `web`](https://github.com/TheTomBritton/lostworld/tree/web) on [`model3recomp` branch `web`](https://github.com/TheTomBritton/model3recomp/tree/web) |
+| `crisiszone/` | Crisis Zone (1999) | Namco System 23 Evolution 2 | [`namco22-decompile` branch `crszone-web`](https://github.com/TheTomBritton/namco22-decompile/tree/crszone-web) (upstream 0.9.3, which adds Crisis Zone, merged into `tc2-web`) |
 
 Both engines are Emscripten builds of the
 [spacestate1/namco22-decompile](https://github.com/spacestate1/namco22-decompile)
@@ -118,6 +119,7 @@ Node harnesses in `test/` (need `npm install puppeteer-core` and a Chrome):
 - `gameplay-test.js`, `browser-test.js`, `soak-test.js`, `f620-test.js`,
   `headed-test.js`, `tc2-gameplay-test.js` — boot/coin/play smoke tests
 - `cabinet-test.js` — the frame and control panel on every page
+- `crisiszone-gameplay-test.js` — Crisis Zone: boot, ZONE SELECT, the machine gun held, the shield (pedal); env PAGE_BASE, OUT, GL=metal
 - `lostworld-page-test.js` — the Lost World page against `serve-coop.py`:
   isolation, ROM build, fields per second, coin and start, screenshots
 - `test-rom-import.js` — the ROM importer against a reference build

@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crisis Zone (browser port)</title>
+<style>
+  html{background:#111;color:#eee}
+  body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:inherit;color:inherit}
+</style>
+<style>
+  /* The page must be served statically (the engine tolerates no CSP). */
+  .arcade-wrap {
+    --panel: #041004;
+    --deep: #030c03;
+    --edge: #1c3a1c;
+    --edge-lit: #2c552c;
+    --ctext: #b8f0a8;
+    --dim: #4f8f4f;
+    --bright: #eaffe0;
+    --ok: #5fdf5f;
+    --bad: #e2a23d;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    max-width: 770px;
+    margin: 0 auto;
+    padding: 24px 0 40px;
+  }
+  /* ── The machine: one contained codec screen (title, loader, game) ── */
+  .machine {
+    background: var(--panel); border: 2px solid var(--edge); border-radius: 4px;
+    padding: 18px 16px; text-align: center;
+    font-family: var(--mono); color: var(--ctext); font-size: 15px; line-height: 1.55;
+  }
+  .machine h1 { margin: 2px 0 10px; }
+  .machine h1 span { /* until the clear-logo art lands: a typographic title */
+    display: block; line-height: 1.1;
+    font-size: clamp(20px, 4.5vw, 30px); font-weight: 700; letter-spacing: .08em;
+    color: var(--bright); text-shadow: 0 0 18px rgba(95, 223, 95, .35);
+  }
+  /* no logo art yet: the title as the codec's own lettering */
+  .machine h1.wordmark { line-height: 1.1; font: 800 clamp(26px, 6vw, 40px)/1.1 var(--mono); letter-spacing: .18em; color: var(--bright); text-shadow: 0 0 10px rgba(95, 223, 95, .45); }
+  .machine h1.wordmark small { display: block; margin-top: 6px; font-size: 11px; letter-spacing: .3em; color: var(--dim); font-weight: 600; }
+  #loadline {
+    display: none;
+    max-width: 640px; margin: 10px auto;
+    border: 1px solid var(--edge); border-radius: 4px; background: var(--deep);
+    padding: 12px 16px;
+    font-size: 12px; letter-spacing: .15em; color: var(--ctext); text-align: left;
+  }
+  #loadline .cursor {
+    display: inline-block; width: 0.55em; height: 1em; margin-left: 4px;
+    background: #8fcf8f; vertical-align: text-bottom;
+    animation: load-blink 1s infinite steps(1);
+  }
+  @keyframes load-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #loadline .cursor { animation: none; } }
+  .machine .panel {
+    background: var(--deep); border: 1px solid var(--edge); border-radius: 4px;
+    padding: 16px 18px; margin: 10px auto; max-width: 640px; text-align: left;
+  }
+  .machine .panel h2 {
+    margin: 0 0 8px; font-size: 0.75rem; letter-spacing: 0.25em;
+    text-transform: uppercase; color: var(--dim); font-weight: 600;
+    border-bottom: 1px solid var(--edge); padding-bottom: 8px;
+  }
+  .machine .panel p { color: var(--ctext); margin: 6px 0; font-size: 13px; }
+  .machine .panel p b { color: var(--bright); }
+  .machine button, .machine .btn, .machine label.filebtn {
+    display: inline-block; background: #14381c; color: var(--ctext);
+    border: 1px solid var(--edge-lit);
+    padding: 9px 20px; border-radius: 4px; font: 600 13px var(--mono);
+    letter-spacing: .05em; cursor: pointer; margin: 8px 8px 0 0;
+    text-decoration: none;
+    transition: background .3s ease, color .3s ease;
+  }
+  .machine button:hover, .machine .btn:hover, .machine label.filebtn:hover { background: #1c4a26; color: var(--bright); }
+  .machine button.secondary, .machine .btn.secondary, .machine label.filebtn.secondary { background: var(--deep); border-color: var(--edge); color: var(--dim); }
+  .machine button.secondary:hover, .machine .btn.secondary:hover { color: var(--ctext); }
+  .machine button:disabled { background: var(--deep); border-color: var(--edge); color: #3d6b3d; cursor: default; }
+  input[type=file] { display: none; }
+  #gamebox { display: none; }
+  /* the screen (a 4:3 box the page fullscreens, with the light gun's frame round the canvas)
+     and the control panel under it are styled by ../lib/cabinet.js */
+  #status { color: var(--dim); font-size: 13px; margin-top: 10px; min-height: 18px; }
+
+  /* ── Controls: their own contained section below the machine ── */
+  .controls-panel {
+    background: var(--panel); border: 2px solid var(--edge); border-radius: 4px;
+    padding: 16px 18px; margin: 16px 0 0;
+    font-family: var(--mono);
+  }
+  .controls-panel h2 {
+    margin: 0 0 10px; font-size: 0.75rem; letter-spacing: 0.25em;
+    text-transform: uppercase; color: var(--dim); font-weight: 600;
+    border-bottom: 1px solid var(--edge); padding-bottom: 8px;
+  }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px 24px; margin: 0; }
+  .controls div {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    font-size: 12.5px; padding: 5px 0; border-bottom: 1px dotted rgba(79, 143, 79, 0.35);
+  }
+  .controls dt { color: var(--bright); font-weight: 600; }
+  .controls dd { margin: 0; color: var(--dim); text-align: right; }
+
+  .smallprint { margin: 14px 2px 0; font-size: 11px; color: #888; text-align: center; }
+</style>
+</head>
+<body oncontextmenu="event.preventDefault()"><!-- page-wide: a lightgun's pedal is right click, and the gun can drift off the canvas mid-press -->
+  <main id="main-content">
+    <div class="arcade-wrap">
+      <div class="machine">
+        <h1 class="wordmark">CRISIS ZONE<small>NAMCO 1999 &middot; SYSTEM 23 EVOLUTION 2</small></h1>
+        <div id="loadline">ESTABLISHING LINK &mdash; DOWNLOADING GAME DATA<span class="cursor" aria-hidden="true"></span></div>
+        <!-- fallback only: shown when nothing is stored AND the hosted download fails -->
+        <section class="panel" id="rompanel" style="display:none">
+          <h2>Game files</h2>
+          <p>The hosted download didn&rsquo;t come through. Feed the machine your own copy of the MAME
+             ROM set <b>crszone.zip</b> (Crisis Zone, World CSZO4 Ver. B, with <b>csz1prg0a.8f</b> from
+             namco_csz1.zip inside it) &mdash; it is verified by the game
+             itself and kept in your browser only, nothing is uploaded.</p>
+          <label class="filebtn">Choose crszone.zip<input type="file" id="romfile" accept=".zip"></label>
+          <button class="secondary" id="forget" style="display:none">Forget stored ROMs</button>
+          <div id="romnote" style="display:none; font-size:12px; margin-top:8px"></div>
+        </section>
+
+        <section id="gamebox">
+          <div id="screen"><canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas></div>
+          <div id="cabinet" aria-label="Cabinet controls"></div>
+          <div id="status"></div>
+        </section>
+      </div>
+
+      <section class="controls-panel">
+        <h2>Controls (keys)</h2>
+        <dl class="controls">
+          <div><dt>Aim</dt><dd>mouse / light gun</dd></div>
+          <div><dt>Shoot (hold: it is a machine gun)</dt><dd>left click / trigger</dd></div>
+          <div><dt>Pedal (lower the shield, attack)</dt><dd>right click / Space</dd></div>
+          <div><dt>Coin (a credit starts the game)</dt><dd>5</dd></div>
+          <div><dt>Trigger key</dt><dd>Enter</dd></div>
+          <div><dt>Menu</dt><dd>Esc</dd></div>
+          <div><dt>Test / Service</dt><dd>F2 / 9</dd></div>
+          <div><dt>Operator menu up / down / enter</dt><dd>PgUp / PgDn / Home</dd></div>
+          <div><dt>Shot flash / mouse speed</dt><dd>F6 / F7</dd></div>
+          <div><dt>Light-gun border (Sinden)</dt><dd>F8</dd></div>
+          <div><dt>CRT look / picture brightness</dt><dd>F9</dd></div>
+          <div><dt>CRT scanlines (resolution)</dt><dd>Shift+F9</dd></div>
+          <div><dt>Fullscreen</dt><dd>F11</dd></div>
+        </dl>
+      </section>
+
+      <p class="smallprint">Game code &amp; assets &copy; Bandai Namco. Recompilation &copy; its contributors (MIT).</p>
+    </div>
+  </main>
+<script>
+/* The engine reads the backbuffer after presenting (the pause/menu backdrop,
+ * screenshots); without this the browser hands back a cleared buffer. */
+{
+  const orig = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+    if (typeof type === 'string' && type.includes('webgl')) attrs = Object.assign({}, attrs, { preserveDrawingBuffer: true });
+    return orig.call(this, type, attrs);
+  };
+}
+</script>
+<script src="../sinden/aim.js?v=7"></script>
+<script src="../sinden/crt.js?v=4"></script>
+<script src="../lib/cabinet.js?v=2"></script>
+<script>
+'use strict';
+(async () => {
+  const $ = id => document.getElementById(id);
+  const screen = $('screen'), canvas = $('canvas');
+  const say = t => { $('status').textContent = t || ''; };
+  /* light gun: the calibration suite's correction + smoothing, cursor hidden in fullscreen; its
+     frame (white border + black gap) is the page's, round the canvas - F8 and the panel cycle it */
+  const gunProfile = SindenAim.load();
+  const frame = Cabinet.frame(screen, canvas, gunProfile);
+  SindenAim.install(canvas, gunProfile, { frame: frame.element });
+  /* CRT look (F9), over the canvas only: the frame stays above it. Hidden until the game draws. */
+  const crt = SindenCrt.install(canvas, gunProfile, null, { deferred: true, lines: 480, status: say, onChange: () => panel.refresh() });
+  /* the control panel: every key the machine reads is a button too */
+  const tap = code => { canvas.focus({ preventScroll: true }); return Cabinet.tapKey(canvas, code); };
+  const cycleBorder = () => { frame.cycle(); say(frame.get() ? `Light-gun border ${frame.get()} %` : 'Light-gun border off'); panel.refresh(); };
+  const panel = Cabinet.panel($('cabinet'), { groups: [
+    { label: 'Power', rows: [[{ id: 'start', kind: 'power', label: 'Power on', title: 'Switch the machine on' }]] },
+    { label: 'Coin', rows: [[{ id: 'coin', kind: 'coin', label: 'Insert coin', key: '5', disabled: true, onClick: () => tap('Digit5') }]] },
+    { label: 'Player', rows: [[{ id: 'p1start', kind: 'round', colour: 'red', label: 'Start', key: 'Enter', title: 'A credit starts the game; the trigger picks the zone', disabled: true, onClick: () => tap('Enter') }]] },
+    { label: 'Service', rows: [[
+      { id: 'menu', kind: 'round', colour: 'white', small: true, label: 'Menu', key: 'Esc', disabled: true, onClick: () => tap('Escape') },
+      { id: 'test', kind: 'round', colour: 'yellow', small: true, label: 'Test', key: 'F2', disabled: true, onClick: () => tap('F2') },
+      { id: 'service', kind: 'round', colour: 'blue', small: true, label: 'Service', key: '9', disabled: true, onClick: () => tap('Digit9') }], [
+      { id: 'opup', kind: 'key', narrow: true, label: 'Op \u25b2', key: 'PgUp', title: 'Operator menu: up', disabled: true, onClick: () => tap('PageUp') },
+      { id: 'opdown', kind: 'key', narrow: true, label: 'Op \u25bc', key: 'PgDn', title: 'Operator menu: down', disabled: true, onClick: () => tap('PageDown') },
+      { id: 'openter', kind: 'key', narrow: true, label: 'Op \u25cf', key: 'Home', title: 'Operator menu: enter', disabled: true, onClick: () => tap('Home') }]] },
+    { label: 'Display', rows: [[
+      { id: 'border', kind: 'key', label: 'Gun border', key: 'F8', readout: () => frame.text(), onClick: cycleBorder },
+      { id: 'crt', kind: 'key', label: 'CRT', key: 'F9', readout: () => (crt ? crt.text() : 'OFF'), onClick: () => crt && crt.cycle() },
+      { id: 'crtlines', kind: 'fader', label: 'CRT lines', key: 'Shift+F9', steps: SindenCrt.STOPS.length, title: 'The CRT look\u2019s scanlines: AUTO is the game\u2019s own 480; the count shows what fits the screen', value: () => (crt ? crt.stop() : 0), onInput: (i) => crt && crt.setStop(i, true), active: () => !!(crt && crt.get().enabled), readout: () => (crt ? crt.linesText() : 'AUTO') },
+      { id: 'fullscreen', kind: 'key', label: 'Fullscreen', key: 'F11', onClick: () => Cabinet.fullscreen(screen) }], [
+      { id: 'flash', kind: 'key', narrow: true, label: 'Shot flash', key: 'F6', title: 'The shot flash: 100, 75, 50, 25 %, off', disabled: true, onClick: () => tap('F6') },
+      { id: 'mousespeed', kind: 'key', narrow: true, label: 'Mouse speed', key: 'F7', title: 'The mouse speed: direct, 125, 150, 200, 300 %', disabled: true, onClick: () => tap('F7') }]] },
+    { label: 'Light gun', rows: [[{ id: 'calibrate', kind: 'link', label: 'Calibrate', href: '../calibrate/' }]] },
+  ] });
+  const powered = () => { panel.item('start').lit(true); panel.enable(['coin', 'p1start', 'menu', 'test', 'service', 'opup', 'opdown', 'openter', 'flash', 'mousespeed']); if (crt) crt.start(); };
+  const GAME = 'crszone';
+  const ZIP_KEY = 'crszone.zip';
+  /* files the game saves in its working directory, persisted across visits */
+  const SAVE_FILES = ['crszone_backup.nv', 'crszone.cfg'];
+
+  /* ---- IndexedDB (the same arcade-roms store the Time Crisis pages use, under this game's prefix) ---- */
+  const ROM_DB = 'arcade-roms', ROM_STORE = 'files';
+  const openDb = () => new Promise((res, rej) => {
+    const req = indexedDB.open(ROM_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(ROM_STORE);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+  async function dbPut(files) {              /* Map name -> Uint8Array */
+    const db = await openDb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(ROM_STORE, 'readwrite'), st = tx.objectStore(ROM_STORE);
+      for (const [name, data] of files) st.put(data, `${GAME}/${name}`);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    });
+    db.close();
+  }
+  async function dbGet(name) {
+    const db = await openDb();
+    const out = await new Promise((res, rej) => {
+      const tx = db.transaction(ROM_STORE, 'readonly');
+      const rq = tx.objectStore(ROM_STORE).get(`${GAME}/${name}`);
+      rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+    });
+    db.close();
+    return out;
+  }
+  async function dbClearGame() {
+    const db = await openDb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(ROM_STORE, 'readwrite'), st = tx.objectStore(ROM_STORE);
+      const cur = st.openCursor();
+      cur.onsuccess = () => {
+        const c = cur.result;
+        if (!c) return res();
+        if (typeof c.key === 'string' && c.key.startsWith(`${GAME}/`)) st.delete(c.key);
+        c.continue();
+      };
+      cur.onerror = () => rej(cur.error);
+    });
+    db.close();
+  }
+
+  async function ready() {
+    $('loadline').style.display = 'none';
+    $('rompanel').style.display = 'none';
+    $('gamebox').style.display = 'block';
+  }
+  function needManual(msg) {
+    $('loadline').style.display = 'none';
+    $('rompanel').style.display = 'block';
+    if (msg) { $('romnote').style.display = 'block'; $('romnote').textContent = msg; }
+  }
+
+  $('romfile').addEventListener('change', async ev => {
+    const f = ev.target.files[0];
+    if (!f) return;
+    const data = new Uint8Array(await f.arrayBuffer());
+    await dbPut(new Map([[ZIP_KEY, data]]));
+    await ready();
+  });
+  $('forget').addEventListener('click', async () => { await dbClearGame(); location.reload(); });
+
+  if (await dbGet(ZIP_KEY)) {
+    $('forget').style.display = 'inline-block';
+    await ready();
+  } else {
+    /* the zip hosted next to the page: fetched silently on first visit; the
+     * manual picker only appears if this path fails. The game itself verifies
+     * every chip by name, size and CRC when it unpacks the zip. */
+    try {
+      $('loadline').style.display = 'block';
+      const r = await fetch('crszone.zip');
+      if (!r.ok) throw new Error('download ' + r.status);
+      const data = new Uint8Array(await r.arrayBuffer());
+      await dbPut(new Map([[ZIP_KEY, data]]));
+      await ready();
+    } catch (e) { needManual(); }
+  }
+
+  /* ---- boot ---- */
+  if (typeof WebAssembly.Suspending === 'undefined')
+    say('This browser has no JSPI — use Chrome or Edge 137+.');
+  let booted = false;
+  $('start').addEventListener('click', async () => {
+    if (booted) return;
+    booted = true;
+    $('start').disabled = true;
+    $('status').textContent = 'Loading…';
+    try {
+      const zip = await dbGet(ZIP_KEY);
+      if (!zip) throw new Error('no stored ROM zip');
+      const ver = (await fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : '0').catch(() => '0')).trim();
+      await new Promise((res, rej) => {
+        const sc = document.createElement('script');
+        sc.src = 'crszone.js?v=' + ver;
+        sc.onload = res; sc.onerror = () => rej(new Error('crszone.js failed to load'));
+        document.head.appendChild(sc);
+      });
+      const cfg = {
+        locateFile: f => f + '?v=' + ver,
+        canvas: $('canvas'),
+        print: t => console.log('[csz]', t),
+        printErr: t => console.warn('[csz]', t),
+        setStatus: t => { if (t) $('status').textContent = t; },
+        preRun: [() => {                 /* ?env=KEY:VAL,KEY2:VAL2 -> engine env vars */
+          const env = new URLSearchParams(location.search).get('env');
+          if (env) for (const kv of env.split(',')) { const [k, v] = kv.split(':'); cfg.ENV[k] = v || '1'; }
+        }],
+      };
+      const module = await createCrisisZone(cfg);
+      const FS = module.FS;
+      FS.mkdir('/game');
+      FS.mkdir('/game/roms');
+      FS.writeFile('/game/roms/crszone.zip', zip);    /* the host's src/tc2_rom.c verifies and unpacks it at start-up */
+      for (const name of SAVE_FILES) {
+        const d = await dbGet('save/' + name);
+        if (d) FS.writeFile('/game/' + name, d);
+      }
+      /* first visit: the cabinet's factory backup RAM wants 2 coins a credit — ship one
+       * preconfigured to 1 COIN 1 CREDIT instead (GAME COST, set through the game's own
+       * test menu; continue cost and free play left at the factory's) */
+      if (!(await dbGet('save/crszone_backup.nv'))) {
+        try {
+          const r = await fetch('crszone_default.nv?v=' + ver);
+          if (r.ok) FS.writeFile('/game/crszone_backup.nv', new Uint8Array(await r.arrayBuffer()));
+        } catch (_) {}                                 /* blank RAM still works: it just asks for 2 coins */
+      }
+      FS.chdir('/game');
+      /* the page draws the light gun's frame and owns fullscreen, so the engine does neither (a
+         saved F8 or menu choice would inset its picture inside our frame); the calibration suite's
+         crosshair + key choices when its profile is on (the engine reads them at start) */
+      const cfgValues = Object.assign({ gun_border: 0, window_mode: 0, fullscreen: 0 }, SindenAim.engineValues(gunProfile));
+      for (const name of ['crszone.cfg']) {
+        let text = '';
+        try { text = FS.readFile('/game/' + name, { encoding: 'utf8' }); } catch (_) {}
+        FS.writeFile('/game/' + name, SindenAim.patchCfg(text, cfgValues));
+      }
+
+      /* persist the cabinet's backup RAM + settings every few seconds and on leave */
+      const persist = async () => {
+        const out = new Map();
+        for (const name of SAVE_FILES) {
+          try { out.set('save/' + name, FS.readFile('/game/' + name)); } catch (_) {}
+        }
+        if (out.size) await dbPut(out);
+      };
+      setInterval(persist, 5000);
+      addEventListener('pagehide', persist);
+
+      say('');
+      powered();
+      canvas.focus();
+      window.__csz = module;                 /* debug access to the module + FS */
+      const extra = new URLSearchParams(location.search).get('args');
+      module.callMain(extra ? extra.split(',') : ['--window', '1']);
+    } catch (e) {
+      say('Boot failed: ' + (e && e.message ? e.message : String(e)) + ' (see console)');
+      console.error('boot error:', e, e && e.errno, e && e.stack);
+      $('start').disabled = false;
+      booted = false;
+    }
+  });
+
+  /* F11 is the engine's own fullscreen (which stretches the canvas to the whole screen) and F8
+     its own border (drawn inside the picture): both are the page's here, taken before SDL sees them */
+  addEventListener('keydown', e => {
+    if (e.code !== 'F11' && e.code !== 'F8') return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (e.repeat) return;
+    if (e.code === 'F11') Cabinet.fullscreen(screen); else cycleBorder();
+  }, true);
+  addEventListener('keyup', e => { if (e.code === 'F11' || e.code === 'F8') { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+})();
+</script>
+</body>
+</html>
