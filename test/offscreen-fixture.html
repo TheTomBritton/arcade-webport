@@ -1,0 +1,12 @@
+<!doctype html><meta charset=utf-8>
+<style>body{margin:0;background:#000} #screen{width:400px;height:300px} #screen:fullscreen{display:flex;align-items:center;justify-content:center} #frame{width:min(100%,calc(100vh*4/3));aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;background:#fff}#canvas{width:90%;height:90%;background:#333}</style>
+<div id=screen><div id=frame><canvas id=canvas width=640 height=480></canvas></div></div>
+<button id=fs onclick="document.getElementById('screen').requestFullscreen()">fs</button>
+<script src="../sinden/aim.js"></script>
+<script>
+const q = new URLSearchParams(location.search);
+const prof = { version:1, enabled: q.get('on')==='1', affine:SindenAim.IDENTITY.slice(), smoothing:0 };
+window.__ev=[]; const c=document.getElementById('canvas');
+for (const t of ['pointerdown','pointerup','mousedown','mouseup']) c.addEventListener(t,e=>__ev.push({t,b:e.button,bs:e.buttons,x:Math.round(e.clientX),y:Math.round(e.clientY)}));
+SindenAim.install(c, prof, { frame: document.getElementById('frame'), offscreen: q.get('mode') || undefined });
+</script>

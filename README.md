@@ -116,6 +116,7 @@ Node harnesses in `test/` (need `npm install puppeteer-core` and a Chrome):
 
 - `aim-test.js` — pure-node unit tests for the aim layer geometry/filtering
 - `aim-browser-test.js` — the same layer driven in a real page
+- `offscreen-test.js` — off-screen shots (fullscreen edge press = the game's reload) against `offscreen-fixture.html`; env CHROME
 - `gameplay-test.js`, `browser-test.js`, `soak-test.js`, `f620-test.js`,
   `headed-test.js`, `tc2-gameplay-test.js` — boot/coin/play smoke tests
 - `cabinet-test.js` — the frame and control panel on every page

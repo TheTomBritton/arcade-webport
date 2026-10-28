@@ -256,6 +256,59 @@ const SindenAim = (() => {
     return f && (f === canvas || f.contains(canvas)) ? f : null;
   };
 
+  // Off-screen shots. Fullscreen, a press on the screen's outermost pixel is the gun
+  // pointed away from the screen (the macOS driver parks the cursor there), which is a
+  // reload in the games that reload that way. The press lands on the black round the
+  // picture, not the canvas, so without this the game never sees it. mode:
+  //   'right' - the game's reload is the right button (Lost World, Virtua Cop 2): the
+  //             press reaches the canvas as a right press, on the canvas's edge
+  //   'edge'  - the game reads a shot outside the picture as off-screen (HOTD2): the
+  //             press reaches the canvas as it is, at its real position
+  // Registered ahead of install()'s handler, so it takes these presses (and their
+  // releases) whether or not the calibration profile is on.
+  function installOffscreen(canvas, mode, ours) {
+    const held = {};                          // per family ('pointer' / 'mouse'): a press taken off-screen
+    const onEdge = (e) => {
+      const x = e.clientX / innerWidth, y = e.clientY / innerHeight;
+      return x <= EDGE || x >= 1 - EDGE || y <= EDGE || y >= 1 - EDGE;
+    };
+    const handler = (e) => {
+      if (ours.has(e) || (e.button !== 0 && e.type !== 'pointercancel')) return;
+      const fs = fullscreenOf(canvas);
+      const family = e.type.startsWith('pointer') ? 'pointer' : 'mouse';
+      const down = e.type === 'pointerdown' || e.type === 'mousedown';
+      if (down) {
+        if (!fs || !(e.target === canvas || fs.contains(e.target)) || !onEdge(e)) return;
+        held[family] = true;
+      } else if (!held[family]) {
+        return;
+      } else {
+        held[family] = false;
+      }
+      // not preventDefault: on a pointerdown that would stop the mousedown SDL listens for
+      e.stopImmediatePropagation();
+      let cx = e.clientX, cy = e.clientY, button = 0, buttons = e.buttons;
+      if (mode === 'right') {
+        // on the canvas, or SDL drops a press outside its window
+        const r = canvas.getBoundingClientRect();
+        cx = Math.min(Math.max(cx, r.left + 1), r.right - 1);
+        cy = Math.min(Math.max(cy, r.top + 1), r.bottom - 1);
+        button = 2; buttons = (buttons & ~1) | (down ? 2 : 0);
+      }
+      const init = {
+        bubbles: true, cancelable: true, composed: true, view: window, detail: e.detail,
+        screenX: e.screenX + (cx - e.clientX), screenY: e.screenY + (cy - e.clientY),
+        clientX: cx, clientY: cy, button, buttons,
+      };
+      const out = family === 'pointer'
+        ? new PointerEvent(e.type, Object.assign(init, { pointerId: e.pointerId, pointerType: e.pointerType, isPrimary: e.isPrimary }))
+        : new MouseEvent(e.type, init);
+      ours.add(out);
+      canvas.dispatchEvent(out);
+    };
+    for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'mousedown', 'mouseup']) window.addEventListener(type, handler, true);
+  }
+
   // Route the canvas's mouse events through the profile. Install BEFORE the
   // engine boots so this capture listener runs ahead of SDL's.
   //
@@ -270,10 +323,11 @@ const SindenAim = (() => {
       (profile.enabled && profile.hideCursor ? '#' + canvas.id + ' { cursor: none !important; }' : '');
     document.head.appendChild(style);
     canvas.addEventListener('contextmenu', e => e.preventDefault());
+    const ours = new WeakSet();
+    if (opts.offscreen) installOffscreen(canvas, opts.offscreen, ours);
     if (!profile.enabled) return null;
 
     const pipe = new Pipeline(profile);
-    const ours = new WeakSet();
     let last = null;                          // the position the engine was last given, client px
 
     let lastIn = null;                        // the last raw move taken: [clientX, clientY, time]

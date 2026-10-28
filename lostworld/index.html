@@ -151,7 +151,7 @@
     </div>
   </main>
 <script src="../lib/fflate.js"></script>
-<script src="../sinden/aim.js?v=7"></script>
+<script src="../sinden/aim.js?v=8"></script>
 <script src="../sinden/crt.js?v=4"></script>
 <script src="../lib/cabinet.js?v=2"></script>
 <script>
@@ -164,7 +164,7 @@
      frame (white border + black gap) is the page's, round the canvas - F8 and the panel cycle it */
   const gunProfile = SindenAim.load();
   const frame = Cabinet.frame(screen, canvas, gunProfile);
-  SindenAim.install(canvas, gunProfile, { frame: frame.element });
+  SindenAim.install(canvas, gunProfile, { frame: frame.element, offscreen: 'right' });
   /* CRT look (F9), over the canvas only: the frame stays above it. Hidden until the game draws. */
   const crt = SindenCrt.install(canvas, gunProfile, null, { deferred: true, lines: 384, status: say, onChange: () => panel.refresh() });
   /* the control panel: every key the board reads is a button too */
