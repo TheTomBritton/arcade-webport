@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The House of the Dead (browser port)</title>
+<style>
+  html{background:#111;color:#eee}
+  body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:inherit;color:inherit}
+</style>
+<style>
+  /* The page must be served statically (the engine tolerates no CSP), cross-origin
+     isolated (COOP/COEP headers; test/serve-coop.py does that locally). */
+  .arcade-wrap {
+    --panel: #041004;
+    --deep: #030c03;
+    --edge: #1c3a1c;
+    --edge-lit: #2c552c;
+    --ctext: #b8f0a8;
+    --dim: #4f8f4f;
+    --bright: #eaffe0;
+    --ok: #5fdf5f;
+    --bad: #e2a23d;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    max-width: 770px;
+    margin: 0 auto;
+    padding: 24px 0 40px;
+  }
+  /* ── The machine: one contained codec screen (title, loader, game) ── */
+  .machine {
+    background: var(--panel); border: 2px solid var(--edge); border-radius: 4px;
+    padding: 18px 16px; text-align: center;
+    font-family: var(--mono); color: var(--ctext); font-size: 15px; line-height: 1.55;
+  }
+  .machine h1 { margin: 2px 0 10px; }
+  .machine h1 span { /* until the clear-logo art lands: a typographic title */
+    display: block; line-height: 1.1;
+    font-size: clamp(20px, 4.5vw, 30px); font-weight: 700; letter-spacing: .08em;
+    color: var(--bright); text-shadow: 0 0 18px rgba(95, 223, 95, .35);
+  }
+  #loadline {
+    display: none;
+    max-width: 640px; margin: 10px auto;
+    border: 1px solid var(--edge); border-radius: 4px; background: var(--deep);
+    padding: 12px 16px;
+    font-size: 12px; letter-spacing: .15em; color: var(--ctext); text-align: left;
+  }
+  #loadline .cursor {
+    display: inline-block; width: 0.55em; height: 1em; margin-left: 4px;
+    background: #8fcf8f; vertical-align: text-bottom;
+    animation: load-blink 1s infinite steps(1);
+  }
+  @keyframes load-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #loadline .cursor { animation: none; } }
+  .machine .panel {
+    background: var(--deep); border: 1px solid var(--edge); border-radius: 4px;
+    padding: 16px 18px; margin: 10px auto; max-width: 640px; text-align: left;
+  }
+  .machine .panel h2 {
+    margin: 0 0 8px; font-size: 0.75rem; letter-spacing: 0.25em;
+    text-transform: uppercase; color: var(--dim); font-weight: 600;
+    border-bottom: 1px solid var(--edge); padding-bottom: 8px;
+  }
+  .machine .panel p { color: var(--ctext); margin: 6px 0; font-size: 13px; }
+  .machine .panel p b { color: var(--bright); }
+  .machine button, .machine .btn, .machine label.filebtn {
+    display: inline-block; background: #14381c; color: var(--ctext);
+    border: 1px solid var(--edge-lit);
+    padding: 9px 20px; border-radius: 4px; font: 600 13px var(--mono);
+    letter-spacing: .05em; cursor: pointer; margin: 8px 8px 0 0;
+    text-decoration: none;
+    transition: background .3s ease, color .3s ease;
+  }
+  .machine button:hover, .machine .btn:hover, .machine label.filebtn:hover { background: #1c4a26; color: var(--bright); }
+  .machine button.secondary, .machine .btn.secondary, .machine label.filebtn.secondary { background: var(--deep); border-color: var(--edge); color: var(--dim); }
+  .machine button.secondary:hover, .machine .btn.secondary:hover { color: var(--ctext); }
+  .machine button:disabled { background: var(--deep); border-color: var(--edge); color: #3d6b3d; cursor: default; }
+  input[type=file] { display: none; }
+  #gamebox { display: block; }
+  /* the engine's frames are drawn by the page (WebGL) over SDL's canvas, which keeps the input */
+  #present { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: block; }
+  .cab-gap { cursor: crosshair; }   /* the game draws no crosshair for a light gun; a gun hides the cursor itself */
+  /* the screen (a 4:3 box the page fullscreens, with the light gun's frame round the canvas)
+     and the control panel under it are styled by ../lib/cabinet.js */
+  #status { color: var(--dim); font-size: 13px; margin-top: 10px; min-height: 18px; }
+  #stats { color: var(--dim); font-size: 11px; margin-top: 2px; min-height: 14px; }
+
+  /* ── Controls: their own contained section below the machine ── */
+  .controls-panel {
+    background: var(--panel); border: 2px solid var(--edge); border-radius: 4px;
+    padding: 16px 18px; margin: 16px 0 0;
+    font-family: var(--mono);
+  }
+  .controls-panel h2 {
+    margin: 0 0 10px; font-size: 0.75rem; letter-spacing: 0.25em;
+    text-transform: uppercase; color: var(--dim); font-weight: 600;
+    border-bottom: 1px solid var(--edge); padding-bottom: 8px;
+  }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px 24px; margin: 0; }
+  .controls div {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    font-size: 12.5px; padding: 5px 0; border-bottom: 1px dotted rgba(79, 143, 79, 0.35);
+  }
+  .controls dt { color: var(--bright); font-weight: 600; }
+  .controls dd { margin: 0; color: var(--dim); text-align: right; }
+
+  .smallprint { margin: 14px 2px 0; font-size: 11px; color: #888; text-align: center; }
+</style>
+</head>
+<body oncontextmenu="event.preventDefault()"><!-- page-wide: a lightgun's pedal is right click (a reload here), and the gun can drift off the canvas mid-press -->
+  <main id="main-content">
+    <div class="arcade-wrap">
+      <div class="machine">
+        <h1><span>THE HOUSE OF THE DEAD</span></h1>
+        <div id="loadline">ESTABLISHING LINK &mdash; LOADING THE MACHINE<span class="cursor" aria-hidden="true"></span></div>
+
+        <section id="gamebox">
+          <div id="screen"><canvas id="canvas" width="1280" height="960" tabindex="0" oncontextmenu="event.preventDefault()"></canvas></div>
+          <div id="cabinet" aria-label="Cabinet controls"></div>
+          <div id="status"></div>
+          <div id="stats"></div>
+        </section>
+      </div>
+
+      <section class="controls-panel">
+        <h2>Controls (keys)</h2>
+        <dl class="controls">
+          <div><dt>Aim</dt><dd>mouse / light gun</dd></div>
+          <div><dt>Shoot</dt><dd>left click / trigger</dd></div>
+          <div><dt>Reload</dt><dd>right click / pedal, or aim off the screen</dd></div>
+          <div><dt>Menus</dt><dd>point and click (the hand follows the gun)</dd></div>
+          <div><dt>Skip a scene</dt><dd>Space</dd></div>
+          <div><dt>Light-gun border (Sinden)</dt><dd>F8</dd></div>
+          <div><dt>CRT look / picture brightness</dt><dd>F9</dd></div>
+          <div><dt>CRT scanlines (resolution)</dt><dd>Shift+F9</dd></div>
+          <div><dt>Fullscreen</dt><dd>F11 / F</dd></div>
+        </dl>
+      </section>
+
+      <p class="smallprint">Game code &amp; assets &copy; Sega (the 1998 Windows release). Recompilation &copy; its contributors
+         (<a href="https://github.com/sp00nznet/hotd-recomp">hotd-recomp</a> on <a href="https://github.com/sp00nznet/pcrecomp">pcrecomp</a>, MIT).</p>
+    </div>
+  </main>
+<script src="../sinden/aim.js?v=8"></script>
+<script src="../sinden/crt.js?v=4"></script>
+<script src="../lib/cabinet.js?v=2"></script>
+<script type="module" src="main.js?v=1"></script>
+</body>
+</html>

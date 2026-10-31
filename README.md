@@ -17,6 +17,7 @@ in the browser, cached in IndexedDB, and never uploaded anywhere).
 | `virtuacop2/` | Virtua Cop 2 (1995) | Sega Model 2A-CRX | [`model2recomp` branch `vcop2-web`](https://github.com/TheTomBritton/model2recomp/tree/vcop2-web) |
 | `lostworld/` | The Lost World: Jurassic Park (1997) | Sega Model 3 Step 1.5 | [`lostworld` branch `web`](https://github.com/TheTomBritton/lostworld/tree/web) on [`model3recomp` branch `web`](https://github.com/TheTomBritton/model3recomp/tree/web) |
 | `crisiszone/` | Crisis Zone (1999) | Namco System 23 Evolution 2 | [`namco22-decompile` branch `crszone-web`](https://github.com/TheTomBritton/namco22-decompile/tree/crszone-web) (upstream 0.9.3, which adds Crisis Zone, merged into `tc2-web`) |
+| `hotd1/` | The House of the Dead (1998 Windows release) | Sega Model 2 game as ported to Win32 | [`hotd-recomp` branch `web`](https://github.com/TheTomBritton/hotd-recomp/tree/web) on [`pcrecomp` branch `hotd-web`](https://github.com/TheTomBritton/pcrecomp/tree/hotd-web) |
 
 Both engines are Emscripten builds of the
 [spacestate1/namco22-decompile](https://github.com/spacestate1/namco22-decompile)
@@ -61,6 +62,28 @@ settings) is kept between visits in the same IndexedDB store, under
 Virtua Cop 2 and The Lost World the page has the module write its nvram file
 (`web_save_nvram`, in the branches above) every few seconds, since a browser
 tab never quits.
+
+The House of the Dead is [sp00nznet/hotd-recomp](https://github.com/sp00nznet/hotd-recomp),
+a static recompilation of the 1998 Windows port's `thotd.exe` running on
+[sp00nznet/pcrecomp](https://github.com/sp00nznet/pcrecomp)'s Win32 layer
+(DirectDraw, DirectSound, DirectInput and the CD-audio MCI implemented on
+SDL2). The branches above add the European disc's build (PE stamp
+`0x3564D180`; `run_lift.py` carries a table of per-build addresses), a
+portable host (`src/hle/main.c`: the game's gun library answered with the
+pointer, its CD check satisfied with `-cd_nocheck`, the MCI music handed to
+the page) and the browser build (`src/web/`). Lift and build per that repo:
+`./build-web.sh` gives `hotd1.js` + `hotd1.wasm`, which go in `hotd1/game/`.
+The game reads its own folder: put the disc's files (everything but the audio
+tracks, `THOTD.EXE` at the top) in `hotd1/game/data/` with a `manifest.json`
+listing them (`tools/web_manifest.py` writes it), and the disc's audio tracks
+as `hotd1/music/track02.m4a` … `track12.m4a`. The engine fetches the game
+folder a piece at a time with Range requests (WASMFS's fetch backend, with a
+fix for hosts that answer the size probe with `Content-Range` only), so the
+server must honour them; `test/serve-coop.py` does. The game's Win32 dialogs
+(Options) draw their text through GDI: put the Liberation fonts (SIL OFL) in
+`hotd1/game/fonts/`. Saves (`CSTATS.CFG`, `DEVS.CFG`, `SCORES.CFG`) live in the
+browser's origin private file system. Mouse = gun: left click shoots, right
+click or an off-screen shot reloads.
 
 *The House of the Dead 2 page is not included: it derives from
 [yunophilia/hotd2-recompiled](https://github.com/yunophilia/hotd2-recompiled),
@@ -123,6 +146,8 @@ Node harnesses in `test/` (need `npm install puppeteer-core` and a Chrome):
 - `crisiszone-gameplay-test.js` — Crisis Zone: boot, ZONE SELECT, the machine gun held, the shield (pedal); env PAGE_BASE, OUT, GL=metal
 - `lostworld-page-test.js` — the Lost World page against `serve-coop.py`:
   isolation, ROM build, fields per second, coin and start, screenshots
+- `hotd1-page-test.js` — The House of the Dead page against `serve-coop.py` (or env PAGE_BASE):
+  isolation, boot, frame rate, the menu hand, Arcade mode and trigger shots, screenshots; env ARGS = engine switches
 - `test-rom-import.js` — the ROM importer against a reference build
 
 Environment variables: `ROM_ZIP` (path to your ROM zip), `OUT` (screenshot
